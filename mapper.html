@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0f172a">
+  <title>Indoor Nav — Mapper</title>
+  <style>
+    :root {
+      --primary: #4f46e5;
+      --primary-light: #818cf8;
+      --bg: #0f172a;
+      --surface: #1e293b;
+      --surface-light: #334155;
+      --text: #f1f5f9;
+      --text-dim: #94a3b8;
+      --success: #22c55e;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); }
+
+    .mapper-app { display: flex; flex-direction: column; height: 100%; }
+
+    /* Header */
+    .mapper-header {
+      padding: 16px 20px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--surface-light);
+    }
+    .mapper-header h1 { font-size: 18px; }
+    .mapper-header p { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
+
+    /* Status bar */
+    .status-bar {
+      padding: 12px 20px;
+      background: var(--surface-light);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 13px;
+    }
+    .status-bar .model-status { color: var(--warning); }
+    .status-bar .model-status.ready { color: var(--success); }
+    .status-bar .count { color: var(--primary-light); font-weight: 600; }
+
+    /* Selectors */
+    .selector-bar {
+      display: flex;
+      gap: 8px;
+      padding: 12px 20px;
+      background: var(--surface);
+      flex-wrap: wrap;
+    }
+    .selector-bar select {
+      flex: 1;
+      min-width: 100px;
+      padding: 10px 12px;
+      background: var(--bg);
+      border: 1px solid var(--surface-light);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 14px;
+    }
+
+    /* Camera view */
+    .camera-container {
+      flex: 1;
+      position: relative;
+      background: #000;
+      overflow: hidden;
+    }
+    .camera-container video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    /* Crosshair */
+    .crosshair {
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      width: 60px; height: 60px;
+      border: 2px solid rgba(255,255,255,0.5);
+      border-radius: 50%;
+      pointer-events: none;
+    }
+    .crosshair::before, .crosshair::after {
+      content: '';
+      position: absolute;
+      background: rgba(255,255,255,0.5);
+    }
+    .crosshair::before {
+      width: 1px; height: 20px;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+    }
+    .crosshair::after {
+      width: 20px; height: 1px;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+    }
+
+    /* Capture feedback */
+    .flash {
+      position: absolute;
+      inset: 0;
+      background: white;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.1s;
+    }
+    .flash.active { opacity: 0.5; }
+
+    /* Capture info overlay */
+    .capture-info {
+      position: absolute;
+      bottom: 0;
+      left: 0; right: 0;
+      padding: 16px 20px;
+      background: linear-gradient(transparent, rgba(0,0,0,0.8));
+    }
+    .capture-info .wp-label {
+      font-size: 18px;
+      font-weight: 600;
+    }
+    .capture-info .wp-detail {
+      font-size: 13px;
+      color: var(--text-dim);
+      margin-top: 4px;
+    }
+    .capture-info .compass {
+      font-size: 13px;
+      color: var(--primary-light);
+      margin-top: 4px;
+    }
+
+    /* Bottom controls */
+    .mapper-controls {
+      padding: 16px 20px;
+      padding-bottom: max(16px, env(safe-area-inset-bottom));
+      background: var(--surface);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .capture-btn {
+      width: 100%;
+      padding: 18px;
+      background: var(--primary);
+      color: white;
+      border: none;
+      border-radius: 14px;
+      font-size: 18px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .capture-btn:disabled {
+      opacity: 0.4;
+    }
+    .capture-btn:active:not(:disabled) {
+      background: #3730a3;
+    }
+
+    .secondary-controls {
+      display: flex;
+      gap: 8px;
+    }
+    .secondary-controls button {
+      flex: 1;
+      padding: 12px;
+      background: var(--surface-light);
+      color: var(--text);
+      border: none;
+      border-radius: 10px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+    .secondary-controls button:active { opacity: 0.7; }
+    .secondary-controls button.danger { background: rgba(239,68,68,0.2); color: #fca5a5; }
+
+    /* Thumbnail strip */
+    .thumbnail-strip {
+      display: flex;
+      gap: 6px;
+      overflow-x: auto;
+      padding: 8px 20px;
+      background: var(--bg);
+    }
+    .thumbnail-strip:empty { display: none; }
+    .thumb {
+      width: 50px; height: 50px;
+      border-radius: 6px;
+      object-fit: cover;
+      border: 2px solid var(--surface-light);
+      flex-shrink: 0;
+    }
+    .thumb.latest { border-color: var(--success); }
+
+    /* Loading overlay */
+    .loading-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(15,23,42,0.95);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+    }
+    .loading-overlay.hidden { display: none; }
+    .loading-overlay .spinner {
+      width: 48px; height: 48px;
+      border: 4px solid var(--surface-light);
+      border-top-color: var(--primary);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+    .loading-overlay p {
+      margin-top: 16px;
+      color: var(--text-dim);
+      font-size: 14px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Instructions panel */
+    .instructions {
+      padding: 20px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--surface-light);
+      font-size: 13px;
+      color: var(--text-dim);
+      line-height: 1.5;
+    }
+    .instructions strong { color: var(--text); }
+    .instructions .step { margin-bottom: 6px; }
+    .instructions .dismiss {
+      color: var(--primary-light);
+      cursor: pointer;
+      margin-top: 8px;
+      display: inline-block;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Loading overlay -->
+  <div id="loading-overlay" class="loading-overlay">
+    <div class="spinner"></div>
+    <p id="loading-text">Initializing...</p>
+  </div>
+
+  <div class="mapper-app">
+    <div class="mapper-header">
+      <h1>Mapper Tool</h1>
+      <p>Capture reference images for visual positioning</p>
+    </div>
+
+    <div class="status-bar">
+      <span id="model-status" class="model-status">Loading model...</span>
+      <span id="feature-count" class="count">0 captures</span>
+    </div>
+
+    <!-- Instructions (dismissible) -->
+    <div id="instructions" class="instructions">
+      <div class="step"><strong>How to map a building:</strong></div>
+      <div class="step">1. Select the <strong>building</strong> and <strong>floor</strong></div>
+      <div class="step">2. Select the <strong>waypoint</strong> you're standing at</div>
+      <div class="step">3. Point your camera in <strong>different directions</strong> and tap <strong>Capture</strong></div>
+      <div class="step">4. Take <strong>4-8 photos per waypoint</strong> (different angles!)</div>
+      <div class="step">5. Move to the next waypoint and repeat</div>
+      <div class="step">6. When done, tap <strong>Export</strong> to save your data</div>
+      <span class="dismiss" onclick="document.getElementById('instructions').style.display='none'">Got it, dismiss</span>
+    </div>
+
+    <!-- Building / Floor / Waypoint selectors -->
+    <div class="selector-bar">
+      <select id="building-select"><option value="">Building...</option></select>
+      <select id="floor-select"><option value="">Floor...</option></select>
+      <select id="waypoint-select"><option value="">Waypoint...</option></select>
+    </div>
+
+    <!-- Camera view -->
+    <div class="camera-container">
+      <video id="mapper-camera" playsinline muted></video>
+      <div class="crosshair"></div>
+      <div id="flash" class="flash"></div>
+      <div class="capture-info">
+        <div id="wp-label" class="wp-label">Select a waypoint</div>
+        <div id="wp-detail" class="wp-detail"></div>
+        <div id="compass-display" class="compass">Compass: --</div>
+      </div>
+    </div>
+
+    <!-- Recent captures strip -->
+    <div id="thumbnail-strip" class="thumbnail-strip"></div>
+
+    <!-- Controls -->
+    <div class="mapper-controls">
+      <button id="capture-btn" class="capture-btn" disabled>
+        Capture Reference Image
+      </button>
+      <div class="secondary-controls">
+        <button id="export-btn">Export Data</button>
+        <button id="import-btn">Import Data</button>
+        <button id="clear-btn" class="danger">Clear All</button>
+      </div>
+    </div>
+  </div>
+
+  <input type="file" id="import-file" accept=".json" style="display:none">
+
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.17.0/dist/tf.min.js"></script>
+  <script src="js/buildings.js"></script>
+  <script src="js/featureDB.js"></script>
+  <script src="js/vps.js"></script>
+  <script>
+    // ============================================================
+    // MAPPER TOOL
+    // ============================================================
+
+    let db, vps, stream;
+    let currentHeading = 0;
+
+    async function init() {
+      const loadingText = document.getElementById("loading-text");
+
+      // Init IndexedDB
+      loadingText.textContent = "Opening database...";
+      db = new FeatureDB();
+      await db.init();
+
+      // Init VPS (loads MobileNet)
+      vps = new VPS(db);
+      await vps.init((msg) => {
+        loadingText.textContent = msg;
+      });
+
+      document.getElementById("model-status").textContent = "Model ready";
+      document.getElementById("model-status").classList.add("ready");
+
+      // Populate building selector
+      populateBuildings();
+
+      // Start camera
+      await startCamera();
+
+      // Start compass
+      startCompass();
+
+      // Update feature count
+      updateCount();
+
+      // Bind events
+      bindEvents();
+
+      // Hide loading
+      document.getElementById("loading-overlay").classList.add("hidden");
+    }
+
+    function populateBuildings() {
+      const sel = document.getElementById("building-select");
+      sel.innerHTML = '<option value="">Building...</option>';
+      for (const [code, building] of Object.entries(BUILDINGS)) {
+        sel.innerHTML += `<option value="${code}">${building.name} (${code})</option>`;
+      }
+    }
+
+    function populateFloors(buildingCode) {
+      const sel = document.getElementById("floor-select");
+      sel.innerHTML = '<option value="">Floor...</option>';
+      if (!buildingCode) return;
+      const building = BUILDINGS[buildingCode];
+      for (const [key, floor] of Object.entries(building.floors)) {
+        sel.innerHTML += `<option value="${key}">${floor.name}</option>`;
+      }
+    }
+
+    function populateWaypoints(buildingCode, floorKey) {
+      const sel = document.getElementById("waypoint-select");
+      sel.innerHTML = '<option value="">Waypoint...</option>';
+      if (!buildingCode || !floorKey) return;
+      const waypoints = BUILDINGS[buildingCode].floors[floorKey].waypoints;
+      for (const wp of waypoints) {
+        sel.innerHTML += `<option value="${wp.id}">${wp.label} (${wp.id})</option>`;
+      }
+      // Also add rooms as capture points
+      const rooms = BUILDINGS[buildingCode].floors[floorKey].rooms;
+      for (const room of rooms) {
+        sel.innerHTML += `<option value="${room.waypointId}">Near ${room.code}: ${room.name}</option>`;
+      }
+    }
+
+    async function startCamera() {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "environment", width: { ideal: 640 }, height: { ideal: 480 } }
+        });
+        document.getElementById("mapper-camera").srcObject = stream;
+        await document.getElementById("mapper-camera").play();
+      } catch (err) {
+        alert("Camera access needed for mapping. Please allow camera permission.");
+      }
+    }
+
+    function startCompass() {
+      if (window.DeviceOrientationEvent) {
+        // iOS 13+ requires permission
+        if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+          document.getElementById("capture-btn").addEventListener("click", async () => {
+            try {
+              const perm = await DeviceOrientationEvent.requestPermission();
+              if (perm === "granted") {
+                window.addEventListener("deviceorientation", handleOrientation);
+              }
+            } catch (e) {}
+          }, { once: true });
+        } else {
+          window.addEventListener("deviceorientation", handleOrientation);
+        }
+      }
+    }
+
+    function handleOrientation(e) {
+      if (e.alpha !== null) {
+        currentHeading = Math.round(e.alpha);
+        document.getElementById("compass-display").textContent = `Compass: ${currentHeading}°`;
+      }
+    }
+
+    function bindEvents() {
+      // Selectors
+      document.getElementById("building-select").addEventListener("change", (e) => {
+        populateFloors(e.target.value);
+        populateWaypoints("", "");
+        updateWaypointDisplay();
+      });
+
+      document.getElementById("floor-select").addEventListener("change", (e) => {
+        const building = document.getElementById("building-select").value;
+        populateWaypoints(building, e.target.value);
+        updateWaypointDisplay();
+      });
+
+      document.getElementById("waypoint-select").addEventListener("change", updateWaypointDisplay);
+
+      // Capture
+      document.getElementById("capture-btn").addEventListener("click", captureImage);
+
+      // Export
+      document.getElementById("export-btn").addEventListener("click", exportData);
+
+      // Import
+      document.getElementById("import-btn").addEventListener("click", () => {
+        document.getElementById("import-file").click();
+      });
+      document.getElementById("import-file").addEventListener("change", importData);
+
+      // Clear
+      document.getElementById("clear-btn").addEventListener("click", async () => {
+        if (confirm("Delete ALL captured reference images? This cannot be undone.")) {
+          await db.clearAll();
+          vps.referenceFeatures = [];
+          updateCount();
+          document.getElementById("thumbnail-strip").innerHTML = "";
+        }
+      });
+    }
+
+    function updateWaypointDisplay() {
+      const wpId = document.getElementById("waypoint-select").value;
+      const buildingCode = document.getElementById("building-select").value;
+      const floorKey = document.getElementById("floor-select").value;
+      const btn = document.getElementById("capture-btn");
+
+      if (wpId && buildingCode && floorKey) {
+        const building = BUILDINGS[buildingCode];
+        const floor = building.floors[floorKey];
+        const wp = floor.waypoints.find(w => w.id === wpId);
+        const label = wp ? wp.label : wpId;
+
+        document.getElementById("wp-label").textContent = label;
+        document.getElementById("wp-detail").textContent =
+          `${building.name} → ${floor.name} → ${wpId}`;
+        btn.disabled = false;
+      } else {
+        document.getElementById("wp-label").textContent = "Select a waypoint";
+        document.getElementById("wp-detail").textContent = "";
+        btn.disabled = true;
+      }
+    }
+
+    async function captureImage() {
+      const wpId = document.getElementById("waypoint-select").value;
+      const buildingCode = document.getElementById("building-select").value;
+      const floorKey = document.getElementById("floor-select").value;
+      const video = document.getElementById("mapper-camera");
+
+      if (!wpId || !buildingCode || !floorKey) return;
+
+      // Flash effect
+      const flash = document.getElementById("flash");
+      flash.classList.add("active");
+      setTimeout(() => flash.classList.remove("active"), 200);
+
+      // Disable button during capture
+      const btn = document.getElementById("capture-btn");
+      btn.disabled = true;
+      btn.textContent = "Processing...";
+
+      try {
+        const id = await vps.captureReference(video, wpId, buildingCode, floorKey, currentHeading);
+
+        // Add thumbnail
+        const features = await db.getAllFeatures();
+        const latest = features[features.length - 1];
+        if (latest && latest.thumbnail) {
+          const strip = document.getElementById("thumbnail-strip");
+          // Remove 'latest' class from previous
+          strip.querySelectorAll(".latest").forEach(t => t.classList.remove("latest"));
+          const img = document.createElement("img");
+          img.src = latest.thumbnail;
+          img.className = "thumb latest";
+          img.title = `${wpId} @ ${currentHeading}°`;
+          strip.appendChild(img);
+          strip.scrollLeft = strip.scrollWidth;
+        }
+
+        updateCount();
+      } catch (err) {
+        alert("Capture failed: " + err.message);
+      }
+
+      btn.disabled = false;
+      btn.textContent = "Capture Reference Image";
+    }
+
+    async function updateCount() {
+      const count = await db.getCount();
+      document.getElementById("feature-count").textContent = `${count} captures`;
+    }
+
+    async function exportData() {
+      const data = await db.exportAll();
+      if (data.length === 0) {
+        alert("No data to export. Capture some reference images first.");
+        return;
+      }
+      const json = JSON.stringify(data);
+      const blob = new Blob([json], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `indoor-nav-map-${Date.now()}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    async function importData(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      try {
+        const text = await file.text();
+        const data = JSON.parse(text);
+        const count = await db.importAll(data);
+        vps.referenceFeatures = await db.getAllFeatures();
+        updateCount();
+        alert(`Imported ${count} reference images.`);
+      } catch (err) {
+        alert("Import failed: " + err.message);
+      }
+
+      e.target.value = "";
+    }
+
+    // Boot
+    init().catch(err => {
+      document.getElementById("loading-text").textContent = "Error: " + err.message;
+      console.error(err);
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,833 @@
+/* ============================================================
+   INDOOR NAV — FULL STYLES
+   ============================================================ */
+
+:root {
+  --primary: #4f46e5;
+  --primary-light: #818cf8;
+  --primary-dark: #3730a3;
+  --bg: #0f172a;
+  --surface: #1e293b;
+  --surface-light: #334155;
+  --text: #f1f5f9;
+  --text-dim: #94a3b8;
+  --success: #22c55e;
+  --warning: #f59e0b;
+  --danger: #ef4444;
+  --radius: 16px;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html, body {
+  height: 100%;
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+/* ---- SCREENS ---- */
+
+.screen {
+  display: none;
+  position: fixed;
+  inset: 0;
+  flex-direction: column;
+}
+
+.screen.active {
+  display: flex;
+}
+
+/* ============================================================
+   SEARCH SCREEN
+   ============================================================ */
+
+#search-screen {
+  justify-content: flex-start;
+  padding: 0 24px;
+  overflow-y: auto;
+}
+
+.app-header {
+  text-align: center;
+  padding: 60px 0 12px;
+}
+
+.app-header h1 {
+  font-size: 28px;
+  font-weight: 700;
+  background: linear-gradient(135deg, var(--primary-light), #a78bfa);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.app-header p {
+  color: var(--text-dim);
+  margin-top: 6px;
+  font-size: 14px;
+}
+
+/* Map status banner */
+.map-status {
+  margin: 12px 0;
+  padding: 12px 16px;
+  background: var(--surface);
+  border-radius: 12px;
+  font-size: 13px;
+  text-align: center;
+}
+
+.status-good {
+  color: var(--success);
+}
+
+.status-warn {
+  color: var(--warning);
+}
+
+.mapper-link {
+  display: block;
+  color: var(--primary-light);
+  margin-top: 6px;
+  text-decoration: none;
+  font-size: 13px;
+}
+
+.mapper-link-footer {
+  text-align: center;
+  padding: 24px 0 40px;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.mapper-link-footer a {
+  color: var(--primary-light);
+  text-decoration: none;
+}
+
+/* Search box */
+.search-box {
+  position: relative;
+  margin-top: 8px;
+}
+
+.search-box input {
+  width: 100%;
+  padding: 18px 20px;
+  padding-right: 80px;
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  background: var(--surface);
+  border: 2px solid var(--surface-light);
+  border-radius: var(--radius);
+  color: var(--text);
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.search-box input::placeholder {
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 400;
+  font-size: 16px;
+  color: var(--text-dim);
+}
+
+.search-box input:focus {
+  border-color: var(--primary);
+}
+
+.search-box button {
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  bottom: 8px;
+  padding: 0 20px;
+  background: var(--primary);
+  color: white;
+  border: none;
+  border-radius: 12px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.search-box button:active {
+  background: var(--primary-dark);
+}
+
+#search-error {
+  margin-top: 12px;
+  padding: 12px 16px;
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 12px;
+  color: #fca5a5;
+  font-size: 14px;
+}
+
+.hidden {
+  display: none !important;
+}
+
+/* Autocomplete */
+#autocomplete-list {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: var(--surface);
+  border: 1px solid var(--surface-light);
+  border-radius: 12px;
+  margin-top: 4px;
+  overflow: hidden;
+  z-index: 10;
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.3);
+}
+
+.autocomplete-item {
+  padding: 14px 16px;
+  font-size: 14px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--surface-light);
+}
+
+.autocomplete-item:last-child {
+  border-bottom: none;
+}
+
+.autocomplete-item:active {
+  background: var(--primary);
+}
+
+/* Quick help */
+.help-section {
+  margin-top: 28px;
+}
+
+.help-section h3,
+.buildings-list h3 {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-dim);
+  margin-bottom: 12px;
+}
+
+.room-examples {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.example-card {
+  background: var(--surface);
+  border-radius: 12px;
+  padding: 14px;
+  cursor: pointer;
+}
+
+.example-card:active {
+  background: var(--surface-light);
+}
+
+.example-card .code {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--primary-light);
+  font-family: monospace;
+}
+
+.example-card .desc {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-top: 4px;
+}
+
+.buildings-list {
+  margin-top: 28px;
+}
+
+.building-card {
+  background: var(--surface);
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.building-icon {
+  width: 44px;
+  height: 44px;
+  background: var(--primary);
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.building-info .name {
+  font-weight: 600;
+}
+
+.building-info .floors {
+  font-size: 13px;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+
+/* ============================================================
+   PRE-NAV SCREEN
+   ============================================================ */
+
+#prenav-screen {
+  padding: 0 24px;
+  overflow-y: auto;
+}
+
+.screen-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 60px 0 20px;
+}
+
+.back-btn {
+  width: 40px;
+  height: 40px;
+  background: var(--surface);
+  border: none;
+  border-radius: 12px;
+  color: var(--text);
+  font-size: 18px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.screen-header h2 {
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.dest-display {
+  background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+  padding: 18px;
+  border-radius: var(--radius);
+  font-size: 16px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.nav-options {
+  margin-top: 24px;
+}
+
+.nav-option-card {
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 20px;
+  margin-bottom: 16px;
+}
+
+.nav-option-card.primary {
+  border: 1px solid var(--primary);
+  background: rgba(79, 70, 229, 0.1);
+}
+
+.option-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.option-badge {
+  background: var(--primary);
+  color: white;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.nav-option-card h3 {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.nav-option-card p {
+  color: var(--text-dim);
+  font-size: 14px;
+  margin-top: 8px;
+  line-height: 1.4;
+}
+
+.option-btn {
+  width: 100%;
+  padding: 14px;
+  border: none;
+  border-radius: 12px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: 16px;
+}
+
+.option-btn.primary {
+  background: var(--primary);
+  color: white;
+}
+
+.option-btn:not(.primary) {
+  background: var(--surface-light);
+  color: var(--text);
+}
+
+.option-btn:active {
+  opacity: 0.8;
+}
+
+.option-divider {
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 13px;
+  margin: 8px 0;
+}
+
+.no-vps-msg {
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: 12px;
+  padding: 16px;
+  font-size: 14px;
+  color: var(--text-dim);
+  margin-bottom: 16px;
+}
+
+.no-vps-msg a {
+  color: var(--primary-light);
+}
+
+/* ============================================================
+   LOCATING SCREEN
+   ============================================================ */
+
+#locating-screen {
+  background: #000;
+}
+
+.locating-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.locating-content {
+  text-align: center;
+  padding: 0 40px;
+}
+
+.scan-ring {
+  width: 120px;
+  height: 120px;
+  border: 4px solid rgba(129, 140, 248, 0.3);
+  border-top-color: var(--primary-light);
+  border-radius: 50%;
+  margin: 0 auto 24px;
+  animation: spin 1.5s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.locating-content h2 {
+  font-size: 24px;
+  margin-bottom: 12px;
+}
+
+.locating-content p {
+  color: var(--text-dim);
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.confidence-text {
+  color: var(--primary-light) !important;
+  margin-top: 12px !important;
+  font-family: monospace;
+  font-size: 13px !important;
+}
+
+.locate-fallback {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 24px;
+  padding-bottom: max(24px, env(safe-area-inset-bottom));
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.9));
+  text-align: center;
+}
+
+.locate-fallback p {
+  color: var(--text-dim);
+  font-size: 14px;
+  margin-bottom: 12px;
+}
+
+.fallback-btn {
+  padding: 14px 28px;
+  background: var(--surface-light);
+  color: var(--text);
+  border: none;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* ============================================================
+   MANUAL START POINT SCREEN
+   ============================================================ */
+
+#startpoint-screen {
+  padding: 0 24px;
+  overflow-y: auto;
+}
+
+.start-label {
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-dim);
+  margin: 16px 0 12px;
+}
+
+.start-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  background: var(--surface);
+  border-radius: 12px;
+  margin-bottom: 8px;
+  cursor: pointer;
+}
+
+.start-option input[type="radio"] {
+  accent-color: var(--primary);
+  width: 20px;
+  height: 20px;
+}
+
+.start-option.primary {
+  background: var(--surface-light);
+  border: 1px solid var(--primary);
+}
+
+.option-icon {
+  font-size: 20px;
+}
+
+.divider {
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 13px;
+  margin: 16px 0;
+  position: relative;
+}
+
+.divider::before,
+.divider::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  width: 30%;
+  height: 1px;
+  background: var(--surface-light);
+}
+
+.divider::before { left: 0; }
+.divider::after { right: 0; }
+
+.start-nav-btn {
+  width: 100%;
+  padding: 18px;
+  background: var(--primary);
+  color: white;
+  border: none;
+  border-radius: var(--radius);
+  font-size: 18px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: 24px;
+  margin-bottom: 40px;
+}
+
+.start-nav-btn:active {
+  background: var(--primary-dark);
+}
+
+/* ============================================================
+   AR NAVIGATION SCREEN — Clean, full-camera layout
+   Camera is full screen. Arrow + instruction at the top.
+   Destination pill at the bottom. No buttons.
+   ============================================================ */
+
+#ar-screen {
+  background: #000;
+}
+
+#ar-camera-feed {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 1;
+}
+
+#ar-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  pointer-events: none;
+}
+
+/* ---- TOP STRIP: arrow + instruction ---- */
+
+.ar-top-strip {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: max(52px, env(safe-area-inset-top, 52px)) 16px 14px;
+  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.75) 60%, transparent);
+}
+
+.ar-exit-btn {
+  width: 36px;
+  height: 36px;
+  background: rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(8px);
+  border: none;
+  border-radius: 50%;
+  color: white;
+  font-size: 20px;
+  cursor: pointer;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.ar-direction {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+/* Compact arrow at the top */
+.ar-arrow-compact {
+  width: 56px;
+  height: 56px;
+  flex-shrink: 0;
+}
+
+.ar-arrow-compact .arrow-svg {
+  width: 100%;
+  height: 100%;
+  filter: drop-shadow(0 2px 8px rgba(79, 70, 229, 0.6));
+}
+
+/* Compass-driven arrow: smooth rotation, no bounce animation */
+.ar-arrow-compact.compass-arrow {
+  transition: transform 0.15s ease-out;
+  animation: none;
+}
+
+.ar-arrow-compact.animate-left {
+  animation: nudgeLeft 1.5s ease-in-out infinite;
+}
+.ar-arrow-compact.animate-right {
+  animation: nudgeRight 1.5s ease-in-out infinite;
+}
+.ar-arrow-compact.animate-up {
+  animation: nudgeUp 1.5s ease-in-out infinite;
+}
+.ar-arrow-compact.animate-down {
+  animation: nudgeDown 1.5s ease-in-out infinite;
+}
+.ar-arrow-compact.animate-pulse {
+  animation: arrowPulse 2s ease-in-out infinite;
+}
+.ar-arrow-compact.animate-arrive {
+  animation: arrowCelebrate 0.6s ease-in-out infinite alternate;
+}
+
+.ar-instruction {
+  min-width: 0;
+}
+
+#instruction-text {
+  font-size: 17px;
+  font-weight: 700;
+  color: white;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.7);
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#distance-display {
+  font-size: 13px;
+  color: var(--primary-light);
+  margin-top: 2px;
+}
+
+.vps-badge {
+  padding: 4px 8px;
+  border-radius: 20px;
+  font-size: 10px;
+  font-weight: 600;
+  font-family: monospace;
+  background: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.5);
+  flex-shrink: 0;
+}
+
+.vps-badge.good { background: rgba(34, 197, 94, 0.25); color: var(--success); }
+.vps-badge.ok { background: rgba(245, 158, 11, 0.25); color: var(--warning); }
+.vps-badge.low { background: rgba(239, 68, 68, 0.25); color: var(--danger); }
+
+/* ---- BOTTOM: destination pill ---- */
+
+.ar-dest-pill {
+  pointer-events: auto;
+  margin: 0 24px;
+  margin-bottom: max(24px, env(safe-area-inset-bottom, 24px));
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(16px);
+  border-radius: 16px;
+  padding: 14px 18px;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+
+.ar-dest-progress {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+#progress-fill {
+  height: 100%;
+  background: var(--primary-light);
+  border-radius: 2px;
+  transition: width 0.4s ease;
+}
+
+#ar-dest-label {
+  font-size: 15px;
+  font-weight: 700;
+  color: white;
+}
+
+#current-location {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.5);
+  margin-top: 2px;
+}
+
+/* Arrived state */
+#ar-overlay.arrived .ar-top-strip {
+  background: linear-gradient(to bottom, rgba(34, 197, 94, 0.3) 60%, transparent);
+}
+
+#ar-overlay.arrived .ar-dest-pill {
+  background: rgba(34, 197, 94, 0.25);
+  border: 1px solid rgba(34, 197, 94, 0.4);
+}
+
+/* Step auto-advance flash */
+#ar-overlay.step-advance .ar-top-strip {
+  animation: topFlash 0.5s ease;
+}
+
+@keyframes topFlash {
+  0%, 100% { background: linear-gradient(to bottom, rgba(0, 0, 0, 0.75) 60%, transparent); }
+  50% { background: linear-gradient(to bottom, rgba(79, 70, 229, 0.5) 60%, transparent); }
+}
+
+@keyframes nudgeLeft {
+  0%, 100% { transform: translateX(0); }
+  50% { transform: translateX(-6px); }
+}
+@keyframes nudgeRight {
+  0%, 100% { transform: translateX(0); }
+  50% { transform: translateX(6px); }
+}
+@keyframes nudgeUp {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+@keyframes nudgeDown {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(6px); }
+}
+@keyframes arrowPulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.1); opacity: 0.85; }
+}
+@keyframes arrowCelebrate {
+  0% { transform: scale(1); }
+  100% { transform: scale(1.15); }
+}
+
+/* (animations are defined in the AR section above) */
+
+/* ============================================================
+   RESPONSIVE
+   ============================================================ */
+
+@media (min-width: 500px) {
+  #search-screen,
+  #prenav-screen,
+  #startpoint-screen {
+    max-width: 480px;
+    margin: 0 auto;
+  }
+}
