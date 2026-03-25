@@ -51,12 +51,21 @@ html, body {
 .screen {
   display: none;
   position: fixed;
-  inset: 0;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .screen.active {
   display: flex;
+}
+
+.screen.scrollable {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .hidden {
@@ -70,10 +79,7 @@ html, body {
 #search-screen {
   justify-content: flex-start;
   padding: 0;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
   background: var(--bg);
-  position: relative;
 }
 
 #search-screen::before {
@@ -426,7 +432,6 @@ html, body {
 
 #prenav-screen {
   padding: 0 24px;
-  overflow-y: auto;
   background: var(--bg);
 }
 
@@ -682,7 +687,6 @@ html, body {
 
 #startpoint-screen {
   padding: 0 24px;
-  overflow-y: auto;
   background: var(--bg);
 }
 
