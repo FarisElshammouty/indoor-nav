@@ -1,5 +1,5 @@
 // Service Worker for offline support
-const CACHE_NAME = "indoor-nav-v8";
+const CACHE_NAME = "indoor-nav-v9";
 const ASSETS = [
   "/",
   "/index.html",
