@@ -7,67 +7,72 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>Indoor Nav</title>
-  <link rel="stylesheet" href="css/style.css?v=5">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
+  <link rel="stylesheet" href="css/style.css?v=8">
   <link rel="manifest" href="manifest.json">
 </head>
 <body>
 
   <!-- ======== SCREEN 1: SEARCH ======== -->
   <div id="search-screen" class="screen scrollable active">
-    <div class="app-header">
-      <div class="app-logo">
-        <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <polygon points="3 11 22 2 13 21 11 13 3 11"/>
-        </svg>
+    <div class="screen-content-wrap">
+      <div class="app-header">
+        <div class="app-logo">
+          <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="3 11 22 2 13 21 11 13 3 11"/>
+          </svg>
+        </div>
+        <h1>Indoor Nav</h1>
+        <p>AI-powered indoor navigation for BU campus</p>
       </div>
-      <h1>Indoor Nav</h1>
-      <p>AI-powered indoor navigation for BU campus</p>
-    </div>
 
-    <!-- Map data status -->
-    <div id="map-status" class="map-status">
-      <span class="status-warn">Checking map data...</span>
-    </div>
+      <!-- Map data status -->
+      <div id="map-status" class="map-status">
+        <span class="status-warn">Checking map data...</span>
+      </div>
 
-    <div class="search-box">
-      <input type="text" id="room-input" placeholder="Where do you need to go?" autocomplete="off" autocapitalize="characters" spellcheck="false">
-      <button id="search-btn">Go</button>
-      <div id="autocomplete-list" class="hidden"></div>
-    </div>
+      <div class="search-box">
+        <input type="text" id="room-input" placeholder="Where do you need to go?" autocomplete="off" autocapitalize="characters" spellcheck="false">
+        <button id="search-btn">Go</button>
+        <div id="autocomplete-list" class="hidden"></div>
+      </div>
 
-    <div id="search-error" class="hidden"></div>
+      <div id="search-error" class="hidden"></div>
 
-    <div class="help-section">
-      <h3>Quick access</h3>
-      <div class="room-examples">
-        <div class="example-card" onclick="document.getElementById('room-input').value='PG22'; app.handleSearch();">
-          <div class="code">PG22</div>
-          <div class="desc">Poole House, Ground Floor</div>
-        </div>
-        <div class="example-card" onclick="document.getElementById('room-input').value='F234'; app.handleSearch();">
-          <div class="code">F234</div>
-          <div class="desc">Fusion, 2nd Floor</div>
-        </div>
-        <div class="example-card" onclick="document.getElementById('room-input').value='P101'; app.handleSearch();">
-          <div class="code">P101</div>
-          <div class="desc">Poole House, 1st Floor</div>
-        </div>
-        <div class="example-card" onclick="document.getElementById('room-input').value='FG30'; app.handleSearch();">
-          <div class="code">FG30</div>
-          <div class="desc">Fusion, Ground Floor</div>
+      <div class="help-section">
+        <h3>Quick access</h3>
+        <div class="room-examples">
+          <div class="example-card" onclick="document.getElementById('room-input').value='PG22'; app.handleSearch();">
+            <div class="code">PG22</div>
+            <div class="desc">Poole House, Ground Floor</div>
+          </div>
+          <div class="example-card" onclick="document.getElementById('room-input').value='F234'; app.handleSearch();">
+            <div class="code">F234</div>
+            <div class="desc">Fusion, 2nd Floor</div>
+          </div>
+          <div class="example-card" onclick="document.getElementById('room-input').value='P101'; app.handleSearch();">
+            <div class="code">P101</div>
+            <div class="desc">Poole House, 1st Floor</div>
+          </div>
+          <div class="example-card" onclick="document.getElementById('room-input').value='FG30'; app.handleSearch();">
+            <div class="code">FG30</div>
+            <div class="desc">Fusion, Ground Floor</div>
+          </div>
         </div>
       </div>
-    </div>
 
-    <div class="buildings-list">
-      <h3>Campus buildings</h3>
-      <div id="buildings-grid" class="buildings-grid">
-        <!-- Populated dynamically from BUILDINGS -->
+      <div class="buildings-list">
+        <h3>Campus buildings</h3>
+        <div id="buildings-grid" class="buildings-grid">
+          <!-- Populated dynamically from BUILDINGS -->
+        </div>
       </div>
-    </div>
 
-    <div class="mapper-link-footer">
-      <a href="mapper.html">Open Mapper Tool</a> — capture reference images for VPS
+      <div class="mapper-link-footer">
+        <a href="mapper.html">Open Mapper Tool</a> — capture reference images for VPS
+      </div>
     </div>
   </div>
 

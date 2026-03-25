@@ -2,7 +2,7 @@
    INDOOR NAV — PREMIUM UI
    ============================================================ */
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+/* Inter font loaded via <link> in HTML */
 
 :root {
   --primary: #6366f1;
@@ -994,11 +994,90 @@ html, body {
    RESPONSIVE
    ============================================================ */
 
-@media (min-width: 500px) {
-  #search-screen,
-  #prenav-screen,
-  #startpoint-screen {
-    max-width: 480px;
-    margin: 0 auto;
+/* Wrapper for centering content on larger screens */
+.screen-content-wrap {
+  width: 100%;
+  max-width: 100%;
+  margin: 0 auto;
+}
+
+/* Tablet+ : center content, widen building grid */
+@media (min-width: 600px) {
+  .screen-content-wrap {
+    max-width: 560px;
+  }
+
+  .buildings-grid {
+    grid-template-columns: 1fr 1fr 1fr;
+  }
+
+  .room-examples {
+    grid-template-columns: 1fr 1fr 1fr 1fr;
+  }
+}
+
+/* Desktop: wider container, larger cards */
+@media (min-width: 900px) {
+  .screen-content-wrap {
+    max-width: 700px;
+  }
+
+  .app-header {
+    padding-top: 80px;
+    padding-bottom: 16px;
+  }
+
+  .app-logo {
+    width: 88px;
+    height: 88px;
+    border-radius: 26px;
+  }
+
+  .app-logo svg {
+    width: 44px;
+    height: 44px;
+  }
+
+  .app-header h1 {
+    font-size: 40px;
+  }
+
+  .app-header p {
+    font-size: 17px;
+  }
+
+  .search-box input {
+    padding: 22px 28px;
+    padding-right: 100px;
+    font-size: 24px;
+  }
+
+  .search-box button {
+    padding: 0 32px;
+    font-size: 18px;
+  }
+
+  .buildings-grid {
+    grid-template-columns: 1fr 1fr 1fr 1fr;
+    gap: 12px;
+  }
+
+  .building-card {
+    padding: 18px;
+  }
+
+  .example-card {
+    padding: 20px;
+  }
+
+  .example-card .code {
+    font-size: 24px;
+  }
+}
+
+/* Large desktop */
+@media (min-width: 1200px) {
+  .screen-content-wrap {
+    max-width: 860px;
   }
 }
