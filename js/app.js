@@ -33,6 +33,7 @@ class IndoorNavApp {
     // Bind events
     this._bindEvents();
     this._populateAutocomplete();
+    this._populateBuildingsGrid();
   }
 
   _updateMapStatus(count) {
@@ -95,6 +96,26 @@ class IndoorNavApp {
 
   _populateAutocomplete() {
     this.allRooms = this.parser.getAllRoomCodes();
+  }
+
+  _populateBuildingsGrid() {
+    const grid = document.getElementById("buildings-grid");
+    if (!grid) return;
+    grid.innerHTML = "";
+    for (const [code, building] of Object.entries(BUILDINGS)) {
+      const floorCount = Object.keys(building.floors).length;
+      const floorLabel = floorCount === 1 ? "1 floor" : `${floorCount} floors`;
+      const card = document.createElement("div");
+      card.className = "building-card";
+      card.innerHTML = `
+        <div class="building-icon">${code}</div>
+        <div class="building-info">
+          <div class="name">${building.name}</div>
+          <div class="floors">${floorLabel}</div>
+        </div>
+      `;
+      grid.appendChild(card);
+    }
   }
 
   _filterAutocomplete() {
