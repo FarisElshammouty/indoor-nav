@@ -24,7 +24,14 @@ class IndoorNavApp {
   async _init() {
     // Init database
     await this.db.init();
-    const count = await this.db.getCount();
+
+    // Auto-load bundled map data if user has no local captures
+    let count = await this.db.getCount();
+    if (count === 0) {
+      await this._loadBundledMapData();
+      count = await this.db.getCount();
+    }
+
     this.mapDataLoaded = count > 0;
 
     // Update UI with map status
@@ -34,6 +41,21 @@ class IndoorNavApp {
     this._bindEvents();
     this._populateAutocomplete();
     this._populateBuildingsGrid();
+  }
+
+  async _loadBundledMapData() {
+    try {
+      const res = await fetch("data/map-data.json");
+      if (!res.ok) return; // No bundled data yet, that's fine
+      const data = await res.json();
+      if (data.length > 0) {
+        await this.db.importAll(data);
+        console.log(`Loaded ${data.length} bundled reference images`);
+      }
+    } catch (e) {
+      // No bundled data available — user needs to capture first
+      console.log("No bundled map data found (data/map-data.json)");
+    }
   }
 
   _updateMapStatus(count) {

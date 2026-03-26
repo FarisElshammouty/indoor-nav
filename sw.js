@@ -1,5 +1,5 @@
 // Service Worker for offline support
-const CACHE_NAME = "indoor-nav-v9";
+const CACHE_NAME = "indoor-nav-v10";
 const ASSETS = [
   "/",
   "/index.html",
@@ -9,6 +9,7 @@ const ASSETS = [
   "/js/compass.js",
   "/js/pathfinder.js",
   "/js/app.js",
+  "/data/map-data.json",
   "/manifest.json",
 ];
 
@@ -19,6 +20,20 @@ self.addEventListener("install", (e) => {
 });
 
 self.addEventListener("fetch", (e) => {
+  // Network-first for map data so updates are picked up immediately
+  if (e.request.url.includes("map-data.json")) {
+    e.respondWith(
+      fetch(e.request)
+        .then((r) => {
+          const clone = r.clone();
+          caches.open(CACHE_NAME).then((c) => c.put(e.request, clone));
+          return r;
+        })
+        .catch(() => caches.match(e.request))
+    );
+    return;
+  }
+  // Cache-first for everything else
   e.respondWith(
     caches.match(e.request).then((r) => r || fetch(e.request))
   );

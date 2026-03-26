@@ -550,14 +550,23 @@
         alert("No data to export. Capture some reference images first.");
         return;
       }
-      const json = JSON.stringify(data);
+      // Strip thumbnails to keep file small (not needed for matching)
+      const slim = data.map(({ thumbnail, ...rest }) => rest);
+      const json = JSON.stringify(slim);
       const blob = new Blob([json], { type: "application/json" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `indoor-nav-map-${Date.now()}.json`;
+      a.download = "map-data.json";
       a.click();
       URL.revokeObjectURL(url);
+      alert(
+        `Exported ${slim.length} references as map-data.json!\n\n` +
+        `To make this available for all users:\n` +
+        `1. Move the file to your repo's data/ folder\n` +
+        `2. Commit and push to GitHub\n` +
+        `3. The app will auto-load it for everyone!`
+      );
     }
 
     async function importData(e) {
