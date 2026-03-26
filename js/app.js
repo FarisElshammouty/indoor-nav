@@ -1,73 +1,27 @@
 // ============================================================
-// MAIN APP CONTROLLER — with Visual Positioning System
+// MAIN APP CONTROLLER — GPS + OCR + Step Counting Navigation
 // ============================================================
 
 class IndoorNavApp {
   constructor() {
     this.parser = new RoomParser(BUILDINGS);
     this.pathfinder = new Pathfinder(BUILDINGS);
-    this.db = new FeatureDB();
-    this.vps = null;
     this.compass = new Compass();
+    this.locationManager = new LocationManager(BUILDINGS);
+
     this.currentStep = 0;
     this.steps = [];
     this.arStream = null;
     this.destination = null;
     this.isNavigating = false;
-    this.userLocation = null;
-    this.vpsReady = false;
-    this.mapDataLoaded = false;
 
     this._init();
   }
 
   async _init() {
-    // Init database
-    await this.db.init();
-
-    // Auto-load bundled map data if user has no local captures
-    let count = await this.db.getCount();
-    if (count === 0) {
-      await this._loadBundledMapData();
-      count = await this.db.getCount();
-    }
-
-    this.mapDataLoaded = count > 0;
-
-    // Update UI with map status
-    this._updateMapStatus(count);
-
-    // Bind events
     this._bindEvents();
     this._populateAutocomplete();
     this._populateBuildingsGrid();
-  }
-
-  async _loadBundledMapData() {
-    try {
-      const res = await fetch("data/map-data.json");
-      if (!res.ok) return; // No bundled data yet, that's fine
-      const data = await res.json();
-      if (data.length > 0) {
-        await this.db.importAll(data);
-        console.log(`Loaded ${data.length} bundled reference images`);
-      }
-    } catch (e) {
-      // No bundled data available — user needs to capture first
-      console.log("No bundled map data found (data/map-data.json)");
-    }
-  }
-
-  _updateMapStatus(count) {
-    const statusEl = document.getElementById("map-status");
-    if (count > 0) {
-      statusEl.innerHTML = `<span class="status-good">${count} reference images loaded — VPS ready</span>`;
-    } else {
-      statusEl.innerHTML = `
-        <span class="status-warn">No map data yet</span>
-        <a href="mapper.html" class="mapper-link">Open Mapper Tool to capture reference images</a>
-      `;
-    }
   }
 
   // ---- UI BINDING ----
@@ -82,23 +36,8 @@ class IndoorNavApp {
     });
     searchInput.addEventListener("input", () => this._filterAutocomplete());
 
-    // Navigation start button
-    document.getElementById("start-nav-btn").addEventListener("click", () => this.startNavigation());
-
-    // Manual fallback
-    document.getElementById("manual-start-btn").addEventListener("click", () => {
-      this._populateStartPoints();
-      this.showScreen("startpoint-screen");
-    });
-    document.getElementById("start-btn").addEventListener("click", () => this.handleManualStart());
-
-    // AR controls (only exit button now — navigation is fully automatic)
+    // AR controls
     document.getElementById("exit-nav-btn").addEventListener("click", () => this.exitNavigation());
-
-    // Back buttons
-    document.querySelectorAll(".back-btn").forEach((btn) => {
-      btn.addEventListener("click", () => this.showScreen("search-screen"));
-    });
 
     // Autocomplete selection
     document.getElementById("autocomplete-list").addEventListener("click", (e) => {
@@ -170,10 +109,10 @@ class IndoorNavApp {
     document.querySelectorAll(".screen").forEach((s) => s.classList.remove("active"));
     document.getElementById(screenId).classList.add("active");
 
-    if (screenId !== "ar-screen" && screenId !== "locating-screen") {
+    if (screenId !== "ar-screen") {
       this._stopCamera();
       this.compass.stop();
-      if (this.vps) this.vps.stopContinuousMatching();
+      this.locationManager.stopOCR();
     }
   }
 
@@ -194,15 +133,8 @@ class IndoorNavApp {
 
     this.destination = result;
 
-    // Show pre-navigation screen
-    document.getElementById("dest-info").textContent = result.fullName;
-
-    // Decide which options to show
-    const hasMapData = this.mapDataLoaded;
-    document.getElementById("vps-option").classList.toggle("hidden", !hasMapData);
-    document.getElementById("no-vps-msg").classList.toggle("hidden", hasMapData);
-
-    this.showScreen("prenav-screen");
+    // Go straight to navigation — no intermediate screens
+    this.startNavigation();
   }
 
   _showError(msg) {
@@ -212,222 +144,240 @@ class IndoorNavApp {
     setTimeout(() => el.classList.add("hidden"), 5000);
   }
 
-  // ---- VPS NAVIGATION ----
+  // ---- NAVIGATION START ----
 
   async startNavigation() {
-    this.showScreen("locating-screen");
-    document.getElementById("locate-status").textContent = "Starting camera...";
+    this.isNavigating = true;
+    this.currentStep = 0;
+    this.steps = [];
+
+    // Show AR screen immediately
+    this.showScreen("ar-screen");
+
+    // Set destination labels
+    document.getElementById("ar-dest-label").textContent =
+      `${this.destination.room.code} — ${this.destination.room.name}`;
+    document.getElementById("current-location").textContent = "Locating...";
+    document.getElementById("instruction-text").textContent = "Starting navigation...";
+    document.getElementById("distance-display").textContent = "";
 
     // Start camera
     await this._startCamera();
 
-    // Init VPS if not already
-    if (!this.vps) {
-      document.getElementById("locate-status").textContent = "Loading AI model (~14MB first time)...";
-      this.vps = new VPS(this.db);
-      await this.vps.init((msg) => {
-        document.getElementById("locate-status").textContent = msg;
-      });
-    } else {
-      // Refresh features
-      this.vps.referenceFeatures = await this.db.getAllFeatures();
-    }
+    // Tell location manager which building we're headed to
+    this.locationManager.setTargetBuilding(this.destination.buildingCode);
 
-    document.getElementById("locate-status").textContent = "Looking around... Point camera at your surroundings";
+    // Start location tracking
+    await this.locationManager.start(
+      (update) => this._onLocationUpdate(update),
+      (newMode, oldMode) => this._onModeChange(newMode, oldMode)
+    );
 
-    // Start matching — use the locating screen's video
-    const video = document.getElementById("camera-feed");
-    let matchCount = 0;
-    let bestMatch = null;
-
-    this.vps.startContinuousMatching(video, (match) => {
-      matchCount++;
-      document.getElementById("locate-confidence").textContent =
-        `Confidence: ${(match.score * 100).toFixed(0)}% | Matches: ${matchCount}`;
-
-      if (!bestMatch || match.score > bestMatch.score) {
-        bestMatch = match;
-      }
-
-      // After 3 good matches, or 1 very confident match, proceed
-      if (match.score > 0.85 || matchCount >= 3) {
-        this.vps.stopContinuousMatching();
-        this._onLocationFound(bestMatch);
-      }
-    });
-
-    // Timeout — if no match after 15 seconds, offer manual option
-    setTimeout(() => {
-      if (this.isNavigating) return;
-      document.getElementById("locate-fallback").classList.remove("hidden");
-    }, 15000);
-  }
-
-  _onLocationFound(match) {
-    this.userLocation = match;
-    this.isNavigating = true;
-
-    // Calculate path
-    const startWaypointId = match.waypointId;
-    const endWaypointId = this.destination.room.waypointId;
-
-    const path = this.pathfinder.findPath(startWaypointId, endWaypointId);
-
-    if (!path) {
-      alert("Could not find a route. Please try manual mode.");
-      this.showScreen("search-screen");
-      return;
-    }
-
-    this.steps = this.pathfinder.getDirections(path, this.destination.room);
-    this.currentStep = 0;
-
-    this._showARView();
-  }
-
-  async _showARView() {
-    this.showScreen("ar-screen");
-    await this._startCamera("ar-camera-feed");
-    this._renderStep();
-
-    // Start compass for real-world arrow direction
+    // Start compass for arrow direction
     await this.compass.start((heading) => {
       this._updateArrowRotation(heading);
     });
 
-    // Continue VPS matching in background to track position
+    // Start OCR scanning with the camera feed
     const video = document.getElementById("ar-camera-feed");
-    this.vps.startContinuousMatching(video, (match) => {
-      this._onContinuousMatch(match);
-    });
+    this.locationManager.startOCR(video);
 
-    // Start step counter
-    if (window.DeviceMotionEvent) {
-      this._motionHandler = (e) => this.vps.handleAccelerometer(e);
-      window.addEventListener("devicemotion", this._motionHandler);
-    }
+    // Show initial status
+    document.getElementById("instruction-text").textContent = "Looking for your location...";
+    this._showOCRStatus("Point camera at room signs or walk outside");
   }
 
-  _updateArrowRotation(heading) {
-    const step = this.steps[this.currentStep];
-    if (!step || step.targetBearing === null || step.targetBearing === undefined) return;
+  // ---- LOCATION UPDATES ----
 
-    const rotation = Compass.getArrowRotation(step.targetBearing, heading);
-    const arrowEl = document.getElementById("ar-arrow");
-    if (arrowEl) {
+  _onLocationUpdate(update) {
+    if (!this.isNavigating) return;
+
+    switch (update.type) {
+      case "outdoor":
+        this._handleOutdoorUpdate(update);
+        break;
+
+      case "near_building":
+        this._handleNearBuilding(update);
+        break;
+
+      case "ocr_room":
+        this._handleOCRRoom(update);
+        break;
+
+      case "ocr_floor":
+        this._handleOCRFloor(update);
+        break;
+
+      case "ocr_building":
+        this._handleOCRBuilding(update);
+        break;
+
+      case "step":
+        this._handleStepUpdate(update);
+        break;
+
+      case "ocr_timeout":
+        this._showOCRStatus(update.message);
+        break;
+
+      case "status":
+        if (update.status) {
+          document.getElementById("instruction-text").textContent = update.status;
+        }
+        break;
+    }
+
+    // Update confidence badge
+    this._updateConfidenceBadge(update.confidence);
+  }
+
+  _handleOutdoorUpdate(update) {
+    // Show outdoor navigation info
+    document.getElementById("outdoor-info").classList.remove("hidden");
+    document.getElementById("ocr-status").classList.add("hidden");
+
+    document.getElementById("outdoor-building-name").textContent = update.targetBuildingName;
+    document.getElementById("outdoor-distance").textContent = `${update.distance}m away`;
+
+    document.getElementById("instruction-text").textContent =
+      `Walk toward ${update.targetBuildingName}`;
+    document.getElementById("distance-display").textContent = `${update.distance}m`;
+    document.getElementById("current-location").textContent = "Outdoors";
+
+    // Arrow points toward the building using GPS bearing
+    if (update.bearing !== null && this.compass.heading !== null) {
+      const rotation = Compass.getArrowRotation(update.bearing, this.compass.heading);
+      const arrowEl = document.getElementById("ar-arrow");
+      const navArrow = `<svg viewBox="0 0 100 120" class="arrow-svg"><path d="M50 10 L80 50 L62 50 L62 110 L38 110 L38 50 L20 50 Z" fill="white"/></svg>`;
+      arrowEl.className = "ar-arrow-compact compass-arrow";
+      arrowEl.innerHTML = navArrow;
       arrowEl.style.transform = `rotate(${rotation}deg)`;
     }
   }
 
-  _onContinuousMatch(match) {
-    // Update VPS confidence badge
-    const confEl = document.getElementById("vps-confidence");
-    if (confEl) {
-      confEl.textContent = `${(match.score * 100).toFixed(0)}%`;
-      confEl.className = `vps-badge ${match.score > 0.75 ? "good" : match.score > 0.6 ? "ok" : "low"}`;
-    }
+  _handleNearBuilding(update) {
+    document.getElementById("outdoor-info").classList.add("hidden");
+    document.getElementById("ocr-status").classList.remove("hidden");
 
-    // Auto-advance: check if user has reached the next waypoint
-    if (match.score > 0.7 && this.currentStep < this.steps.length - 1) {
-      // Check if the match corresponds to ANY future step (user might skip waypoints)
-      for (let i = this.currentStep + 1; i < this.steps.length; i++) {
-        if (match.waypointId === this.steps[i].waypointId) {
-          this.currentStep = i;
-          this._renderStep();
-          this._pulseAdvance();
-          break;
-        }
-      }
-    }
+    document.getElementById("instruction-text").textContent =
+      `Entering ${update.buildingName}`;
+    document.getElementById("distance-display").textContent = `${Math.round(update.distance)}m`;
+    document.getElementById("current-location").textContent = update.buildingName;
+
+    this._showOCRStatus("Point camera at room number signs");
   }
 
-  _pulseAdvance() {
-    const overlay = document.getElementById("ar-overlay");
-    overlay.classList.add("step-advance");
-    setTimeout(() => overlay.classList.remove("step-advance"), 500);
-  }
+  _handleOCRRoom(update) {
+    // Room detected! Calculate path and start turn-by-turn
+    document.getElementById("outdoor-info").classList.add("hidden");
+    document.getElementById("ocr-status").classList.remove("hidden");
+    this._showOCRStatus(`Detected: ${update.code}`);
 
-  // ---- MANUAL FALLBACK ----
-
-  _populateStartPoints() {
-    if (!this.destination) return;
-
-    const building = this.destination.building;
-    document.getElementById("dest-display").textContent = this.destination.fullName;
-
-    const startPoints = [];
-
-    // Collect entrances
-    for (const fKey of Object.keys(building.floors)) {
-      const floor = building.floors[fKey];
-      for (const wp of floor.waypoints) {
-        if (wp.isEntrance) {
-          startPoints.push({ id: wp.id, label: `${wp.label} (${floor.name})`, isPrimary: true });
-        }
-      }
-    }
-
-    // Collect rooms as "I'm near..." options
-    for (const fKey of Object.keys(building.floors)) {
-      const floor = building.floors[fKey];
-      for (const room of floor.rooms) {
-        startPoints.push({
-          id: room.waypointId,
-          label: `Near ${room.code} — ${room.name} (${floor.name})`,
-          isPrimary: false,
-        });
-      }
-    }
-
-    const container = document.getElementById("start-points");
-    container.innerHTML = "";
-
-    const entrances = startPoints.filter((s) => s.isPrimary);
-    const others = startPoints.filter((s) => !s.isPrimary);
-
-    for (const sp of entrances) {
-      container.innerHTML += `
-        <label class="start-option primary">
-          <input type="radio" name="start-point" value="${sp.id}" checked>
-          <span class="option-icon">&#128682;</span>
-          <span>${sp.label}</span>
-        </label>`;
-    }
-
-    if (others.length > 0) {
-      container.innerHTML += `<div class="divider">Or I'm near a room:</div>`;
-      for (const sp of others) {
-        container.innerHTML += `
-          <label class="start-option">
-            <input type="radio" name="start-point" value="${sp.id}">
-            <span class="option-icon">&#128205;</span>
-            <span>${sp.label}</span>
-          </label>`;
-      }
-    }
-  }
-
-  handleManualStart() {
-    const selected = document.querySelector('input[name="start-point"]:checked');
-    if (!selected) return;
-
-    const startWaypointId = selected.value;
+    // Find path from detected room's waypoint to destination
+    const startWaypointId = update.waypointId;
     const endWaypointId = this.destination.room.waypointId;
+
+    // If we detected the destination room itself
+    if (update.code === this.destination.room.code) {
+      this._showArrived();
+      return;
+    }
 
     const path = this.pathfinder.findPath(startWaypointId, endWaypointId);
 
     if (!path) {
-      alert("Sorry, couldn't find a route.");
+      document.getElementById("instruction-text").textContent =
+        "Looking for a route...";
       return;
     }
 
     this.steps = this.pathfinder.getDirections(path, this.destination.room);
     this.currentStep = 0;
-    this.isNavigating = true;
-    this._showARView();
+
+    // Update current location display
+    const building = BUILDINGS[update.building];
+    const floor = building.floors[update.floor];
+    document.getElementById("current-location").textContent =
+      `${building.name} — ${floor.name}`;
+
+    this._renderStep();
+  }
+
+  _handleOCRFloor(update) {
+    // Floor sign detected — update display
+    if (this.locationManager.currentBuilding) {
+      const building = this.locationManager.currentBuilding.building;
+      const floor = building.floors[update.floorKey];
+      if (floor) {
+        document.getElementById("current-location").textContent =
+          `${building.name} — ${floor.name}`;
+      }
+    }
+    this._showOCRStatus(`Floor ${update.floorKey} detected — keep scanning for room signs`);
+  }
+
+  _handleOCRBuilding(update) {
+    document.getElementById("current-location").textContent = update.buildingName;
+    this._showOCRStatus(`${update.buildingName} — scan room number signs`);
+  }
+
+  _handleStepUpdate(update) {
+    // Auto-advance if user has walked past a waypoint's expected distance
+    if (this.steps.length > 0 && this.currentStep < this.steps.length - 1) {
+      const currentStepData = this.steps[this.currentStep];
+      if (currentStepData.distance > 0 &&
+          update.distanceSinceLastFix >= currentStepData.distance * 0.8) {
+        // User has walked approximately the right distance — advance
+        this.currentStep++;
+        this.locationManager.stepCounter.resetDistance();
+        this._renderStep();
+        this._pulseAdvance();
+      }
+    }
+  }
+
+  _onModeChange(newMode, oldMode) {
+    // Update mode badge
+    const badge = document.getElementById("mode-badge");
+    const label = document.getElementById("mode-label");
+    const icon = document.getElementById("mode-icon");
+
+    badge.className = `mode-badge ${newMode}`;
+
+    switch (newMode) {
+      case "outdoor":
+        label.textContent = "Outdoor";
+        icon.textContent = "";
+        break;
+      case "transitioning":
+        label.textContent = "Entering Building";
+        icon.textContent = "";
+        break;
+      case "indoor":
+        label.textContent = "Indoor";
+        icon.textContent = "";
+        break;
+      default:
+        label.textContent = "Starting";
+        icon.textContent = "";
+    }
   }
 
   // ---- AR RENDERING ----
+
+  _updateArrowRotation(heading) {
+    // If we have navigation steps, use step bearing
+    const step = this.steps[this.currentStep];
+    if (step && step.targetBearing !== null && step.targetBearing !== undefined) {
+      const rotation = Compass.getArrowRotation(step.targetBearing, heading);
+      const arrowEl = document.getElementById("ar-arrow");
+      if (arrowEl && arrowEl.classList.contains("compass-arrow")) {
+        arrowEl.style.transform = `rotate(${rotation}deg)`;
+      }
+    }
+    // If outdoor, location update handler handles the arrow
+  }
 
   _renderStep() {
     const step = this.steps[this.currentStep];
@@ -455,13 +405,7 @@ class IndoorNavApp {
 
     // Arrived state
     if (step.isLast) {
-      document.getElementById("ar-overlay").classList.add("arrived");
-      // Auto-exit after 5 seconds
-      setTimeout(() => {
-        if (this.isNavigating && this.currentStep === this.steps.length - 1) {
-          this.exitNavigation();
-        }
-      }, 5000);
+      this._showArrived();
     } else {
       document.getElementById("ar-overlay").classList.remove("arrived");
     }
@@ -471,7 +415,6 @@ class IndoorNavApp {
     const arrowEl = document.getElementById("ar-arrow");
     const step = this.steps[this.currentStep];
 
-    // Special icons that don't use compass rotation
     const specialSvgs = {
       start: `<svg viewBox="0 0 100 100" class="arrow-svg"><circle cx="50" cy="50" r="24" fill="#818cf8"/><circle cx="50" cy="50" r="10" fill="white"/></svg>`,
       up: `<svg viewBox="0 0 100 100" class="arrow-svg"><path d="M50 8 L82 45 L62 45 L62 72 L38 72 L38 45 L18 45 Z" fill="#22c55e"/><rect x="32" y="78" width="36" height="5" rx="2.5" fill="rgba(34,197,94,0.5)"/><rect x="37" y="87" width="26" height="5" rx="2.5" fill="rgba(34,197,94,0.3)"/></svg>`,
@@ -486,7 +429,6 @@ class IndoorNavApp {
       arrive: "animate-arrive",
     };
 
-    // For start, stairs, and arrive — use static icons with animations
     if (specialSvgs[icon]) {
       arrowEl.className = `ar-arrow-compact ${specialAnimClass[icon]}`;
       arrowEl.innerHTML = specialSvgs[icon];
@@ -494,12 +436,11 @@ class IndoorNavApp {
       return;
     }
 
-    // For navigation steps — use a single upward arrow that rotates via compass
+    // Navigation arrow that rotates via compass
     const navArrow = `<svg viewBox="0 0 100 120" class="arrow-svg"><path d="M50 10 L80 50 L62 50 L62 110 L38 110 L38 50 L20 50 Z" fill="white"/></svg>`;
     arrowEl.className = "ar-arrow-compact compass-arrow";
     arrowEl.innerHTML = navArrow;
 
-    // Apply initial rotation if compass heading is available
     if (step && step.targetBearing !== null && step.targetBearing !== undefined && this.compass.heading !== null) {
       const rotation = Compass.getArrowRotation(step.targetBearing, this.compass.heading);
       arrowEl.style.transform = `rotate(${rotation}deg)`;
@@ -508,48 +449,84 @@ class IndoorNavApp {
     }
   }
 
+  _showArrived() {
+    document.getElementById("ar-overlay").classList.add("arrived");
+    document.getElementById("instruction-text").textContent = "You've arrived!";
+    document.getElementById("distance-display").textContent = "";
+    document.getElementById("progress-fill").style.width = "100%";
+
+    // Show arrive icon
+    const arrowEl = document.getElementById("ar-arrow");
+    arrowEl.className = "ar-arrow-compact animate-arrive";
+    arrowEl.innerHTML = `<svg viewBox="0 0 100 100" class="arrow-svg"><circle cx="50" cy="50" r="38" fill="none" stroke="#22c55e" stroke-width="5"/><path d="M30 50 L44 64 L70 38" fill="none" stroke="#22c55e" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+    arrowEl.style.transform = "";
+
+    // Auto-exit after 8 seconds
+    setTimeout(() => {
+      if (this.isNavigating) {
+        this.exitNavigation();
+      }
+    }, 8000);
+  }
+
+  _pulseAdvance() {
+    const overlay = document.getElementById("ar-overlay");
+    overlay.classList.add("step-advance");
+    setTimeout(() => overlay.classList.remove("step-advance"), 500);
+  }
+
+  _updateConfidenceBadge(confidence) {
+    const el = document.getElementById("loc-confidence");
+    if (!el || confidence === undefined) return;
+
+    const pct = Math.round(confidence);
+    el.textContent = `${pct}%`;
+
+    if (pct > 70) {
+      el.className = "confidence-badge good";
+    } else if (pct > 40) {
+      el.className = "confidence-badge ok";
+    } else {
+      el.className = "confidence-badge low";
+    }
+  }
+
+  _showOCRStatus(text) {
+    const el = document.getElementById("ocr-status");
+    const textEl = document.getElementById("ocr-status-text");
+    if (el) el.classList.remove("hidden");
+    if (textEl) textEl.textContent = text;
+  }
+
+  // ---- EXIT ----
+
   exitNavigation() {
     this._stopCamera();
     this.compass.stop();
-    if (this.vps) this.vps.stopContinuousMatching();
-    if (this._motionHandler) {
-      window.removeEventListener("devicemotion", this._motionHandler);
-    }
+    this.locationManager.stop();
     this.isNavigating = false;
+    this.steps = [];
+    this.currentStep = 0;
+    document.getElementById("ar-overlay").classList.remove("arrived");
     this.showScreen("search-screen");
   }
 
   // ---- CAMERA ----
 
-  _getActiveVideo() {
-    // Return the video element for whichever screen is active
-    const locatingScreen = document.getElementById("locating-screen");
-    if (locatingScreen.classList.contains("active")) {
-      return document.getElementById("camera-feed");
-    }
-    return document.getElementById("ar-camera-feed");
-  }
-
-  async _startCamera(targetVideoId) {
+  async _startCamera() {
     try {
-      // Stop existing stream first
       this._stopCamera();
-
-      const videoId = targetVideoId || (
-        document.getElementById("locating-screen").classList.contains("active")
-          ? "camera-feed"
-          : "ar-camera-feed"
-      );
-      const video = document.getElementById(videoId);
+      const video = document.getElementById("ar-camera-feed");
 
       this.arStream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: "environment", width: { ideal: 640 }, height: { ideal: 480 } },
       });
       video.srcObject = this.arStream;
-      this._activeVideoId = videoId;
       await video.play();
     } catch (err) {
       console.warn("Camera not available:", err);
+      document.getElementById("instruction-text").textContent =
+        "Camera access needed — please allow camera permission";
     }
   }
 
@@ -558,12 +535,8 @@ class IndoorNavApp {
       this.arStream.getTracks().forEach((t) => t.stop());
       this.arStream = null;
     }
-    // Clear both video elements
-    for (const id of ["camera-feed", "ar-camera-feed"]) {
-      const video = document.getElementById(id);
-      if (video) video.srcObject = null;
-    }
-    this._activeVideoId = null;
+    const video = document.getElementById("ar-camera-feed");
+    if (video) video.srcObject = null;
   }
 }
 

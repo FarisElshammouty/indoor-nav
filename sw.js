@@ -1,5 +1,5 @@
 // Service Worker for offline support
-const CACHE_NAME = "indoor-nav-v11";
+const CACHE_NAME = "indoor-nav-v12";
 const ASSETS = [
   "/",
   "/index.html",
@@ -8,8 +8,11 @@ const ASSETS = [
   "/js/roomParser.js",
   "/js/compass.js",
   "/js/pathfinder.js",
+  "/js/gps.js",
+  "/js/ocr.js",
+  "/js/stepcounter.js",
+  "/js/location-manager.js",
   "/js/app.js",
-  "/data/map-data.json",
   "/manifest.json",
 ];
 
@@ -20,8 +23,8 @@ self.addEventListener("install", (e) => {
 });
 
 self.addEventListener("fetch", (e) => {
-  // Network-first for map data so updates are picked up immediately
-  if (e.request.url.includes("map-data.json")) {
+  // Network-first for all JS/CSS to pick up updates quickly
+  if (e.request.url.match(/\.(js|css)(\?.*)?$/)) {
     e.respondWith(
       fetch(e.request)
         .then((r) => {

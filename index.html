@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
-  <link rel="stylesheet" href="css/style.css?v=8">
+  <link rel="stylesheet" href="css/style.css?v=9">
   <link rel="manifest" href="manifest.json">
 </head>
 <body>
@@ -25,12 +25,12 @@
           </svg>
         </div>
         <h1>Indoor Nav</h1>
-        <p>AI-powered indoor navigation for BU campus</p>
+        <p>Smart indoor navigation for BU campus</p>
       </div>
 
-      <!-- Map data status -->
+      <!-- Status banner -->
       <div id="map-status" class="map-status">
-        <span class="status-warn">Checking map data...</span>
+        <span class="status-good">GPS + Camera navigation ready</span>
       </div>
 
       <div class="search-box">
@@ -70,95 +70,49 @@
         </div>
       </div>
 
-      <div class="mapper-link-footer">
-        <a href="mapper.html">Open Mapper Tool</a> — capture reference images for VPS
+      <div class="app-footer">
+        <span>BU Indoor Navigation</span>
       </div>
     </div>
   </div>
 
-  <!-- ======== SCREEN 2: PRE-NAVIGATION ======== -->
-  <div id="prenav-screen" class="screen scrollable">
-    <div class="screen-header">
-      <button class="back-btn">&larr;</button>
-      <h2>Navigate to</h2>
-    </div>
-
-    <div id="dest-info" class="dest-display"></div>
-
-    <div class="nav-options">
-      <!-- VPS Option -->
-      <div id="vps-option" class="nav-option-card primary">
-        <div class="option-header">
-          <span class="option-badge">AI Powered</span>
-          <h3>Auto-Locate Me</h3>
-        </div>
-        <p>Point your camera around — the AI will recognize where you are and guide you automatically.</p>
-        <button id="start-nav-btn" class="option-btn primary">Start Camera Locating</button>
-      </div>
-
-      <div id="no-vps-msg" class="no-vps-msg hidden">
-        <p>No reference images captured yet. <a href="mapper.html">Use the Mapper Tool</a> first to enable camera-based positioning.</p>
-      </div>
-
-      <div class="option-divider">or</div>
-
-      <!-- Manual Option -->
-      <div class="nav-option-card">
-        <h3>Choose Starting Point</h3>
-        <p>Manually select where you are right now.</p>
-        <button id="manual-start-btn" class="option-btn">Choose Manually</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- ======== SCREEN 3: LOCATING (VPS working) ======== -->
-  <div id="locating-screen" class="screen">
-    <video id="camera-feed" playsinline muted style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:1;"></video>
-    <div class="locating-overlay">
-      <div class="locating-content">
-        <div class="scan-ring"></div>
-        <h2>Locating you...</h2>
-        <p id="locate-status">Starting camera...</p>
-        <p id="locate-confidence" class="confidence-text"></p>
-      </div>
-      <div id="locate-fallback" class="locate-fallback hidden">
-        <p>Having trouble recognizing this location.</p>
-        <button onclick="app.showScreen('startpoint-screen'); app._populateStartPoints();" class="fallback-btn">Choose location manually</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- ======== SCREEN 4: MANUAL START POINT ======== -->
-  <div id="startpoint-screen" class="screen scrollable">
-    <div class="screen-header">
-      <button class="back-btn">&larr;</button>
-      <h2>Where are you?</h2>
-    </div>
-
-    <div id="dest-display" class="dest-display"></div>
-
-    <div class="start-label">Select your starting point</div>
-    <div id="start-points"></div>
-
-    <button id="start-btn" class="start-nav-btn">Start Navigation</button>
-  </div>
-
-  <!-- ======== SCREEN 5: AR NAVIGATION ======== -->
+  <!-- ======== SCREEN 2: AR NAVIGATION ======== -->
   <div id="ar-screen" class="screen">
     <video id="ar-camera-feed" playsinline muted></video>
 
     <div id="ar-overlay">
+      <!-- Mode badge (outdoor/indoor) -->
+      <div id="mode-badge" class="mode-badge outdoor">
+        <span id="mode-icon" class="mode-icon"></span>
+        <span id="mode-label">Outdoor</span>
+      </div>
+
       <!-- Top: Arrow + instruction -->
       <div class="ar-top-strip">
         <button id="exit-nav-btn" class="ar-exit-btn">&times;</button>
         <div class="ar-direction">
           <div id="ar-arrow" class="ar-arrow-compact"></div>
           <div class="ar-instruction">
-            <div id="instruction-text">Walk straight ahead</div>
-            <div id="distance-display">12m</div>
+            <div id="instruction-text">Locating you...</div>
+            <div id="distance-display"></div>
           </div>
         </div>
-        <span id="vps-confidence" class="vps-badge">--</span>
+        <span id="loc-confidence" class="confidence-badge">--</span>
+      </div>
+
+      <!-- OCR status indicator -->
+      <div id="ocr-status" class="ocr-status hidden">
+        <div class="ocr-scan-line"></div>
+        <span id="ocr-status-text">Scanning for signs...</span>
+      </div>
+
+      <!-- Outdoor info panel (shown when navigating between buildings) -->
+      <div id="outdoor-info" class="outdoor-info hidden">
+        <div class="outdoor-building-target">
+          <div id="outdoor-building-name" class="outdoor-building-name">Poole House</div>
+          <div id="outdoor-distance" class="outdoor-distance">150m away</div>
+        </div>
+        <div class="outdoor-hint">Walk toward the building, then point camera at room signs</div>
       </div>
 
       <!-- Bottom: Small destination pill -->
@@ -167,21 +121,23 @@
           <div id="progress-fill"></div>
         </div>
         <div id="ar-dest-label">Room PG22</div>
-        <div id="current-location">Poole House</div>
+        <div id="current-location">Locating...</div>
       </div>
     </div>
   </div>
 
-  <!-- TensorFlow.js -->
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.17.0/dist/tf.min.js"></script>
+  <!-- Tesseract.js for OCR -->
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 
   <!-- App scripts -->
   <script src="js/buildings.js"></script>
-  <script src="js/featureDB.js"></script>
-  <script src="js/vps.js"></script>
   <script src="js/roomParser.js"></script>
   <script src="js/compass.js"></script>
   <script src="js/pathfinder.js"></script>
+  <script src="js/gps.js"></script>
+  <script src="js/ocr.js"></script>
+  <script src="js/stepcounter.js"></script>
+  <script src="js/location-manager.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>
