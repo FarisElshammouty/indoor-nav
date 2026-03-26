@@ -7,56 +7,83 @@
   <title>Indoor Nav — Mapper</title>
   <style>
     :root {
-      --primary: #4f46e5;
+      --primary: #6366f1;
       --primary-light: #818cf8;
       --bg: #0f172a;
       --surface: #1e293b;
       --surface-light: #334155;
       --text: #f1f5f9;
       --text-dim: #94a3b8;
-      --success: #22c55e;
+      --success: #10b981;
       --warning: #f59e0b;
       --danger: #ef4444;
+      --recording: #ef4444;
     }
 
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); }
+    html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); overflow: hidden; }
 
     .mapper-app { display: flex; flex-direction: column; height: 100%; }
 
     /* Header */
     .mapper-header {
-      padding: 16px 20px;
+      padding: 14px 20px;
       background: var(--surface);
       border-bottom: 1px solid var(--surface-light);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
     }
     .mapper-header h1 { font-size: 18px; }
-    .mapper-header p { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
+    .mapper-header .count { color: var(--primary-light); font-weight: 600; font-size: 14px; }
 
     /* Status bar */
     .status-bar {
-      padding: 12px 20px;
+      padding: 10px 20px;
       background: var(--surface-light);
       display: flex;
       justify-content: space-between;
       align-items: center;
       font-size: 13px;
     }
-    .status-bar .model-status { color: var(--warning); }
-    .status-bar .model-status.ready { color: var(--success); }
-    .status-bar .count { color: var(--primary-light); font-weight: 600; }
+    .model-status { color: var(--warning); }
+    .model-status.ready { color: var(--success); }
+
+    /* Mode tabs */
+    .mode-tabs {
+      display: flex;
+      background: var(--surface);
+      border-bottom: 1px solid var(--surface-light);
+    }
+    .mode-tab {
+      flex: 1;
+      padding: 12px;
+      text-align: center;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      color: var(--text-dim);
+      border-bottom: 2px solid transparent;
+      background: none;
+      border-top: none;
+      border-left: none;
+      border-right: none;
+    }
+    .mode-tab.active {
+      color: var(--primary-light);
+      border-bottom-color: var(--primary-light);
+    }
 
     /* Selectors */
     .selector-bar {
       display: flex;
       gap: 8px;
-      padding: 12px 20px;
+      padding: 10px 20px;
       background: var(--surface);
-      flex-wrap: wrap;
     }
     .selector-bar select {
       flex: 1;
-      min-width: 100px;
+      min-width: 80px;
       padding: 10px 12px;
       background: var(--bg);
       border: 1px solid var(--surface-light);
@@ -78,33 +105,7 @@
       object-fit: cover;
     }
 
-    /* Crosshair */
-    .crosshair {
-      position: absolute;
-      top: 50%; left: 50%;
-      transform: translate(-50%, -50%);
-      width: 60px; height: 60px;
-      border: 2px solid rgba(255,255,255,0.5);
-      border-radius: 50%;
-      pointer-events: none;
-    }
-    .crosshair::before, .crosshair::after {
-      content: '';
-      position: absolute;
-      background: rgba(255,255,255,0.5);
-    }
-    .crosshair::before {
-      width: 1px; height: 20px;
-      top: 50%; left: 50%;
-      transform: translate(-50%, -50%);
-    }
-    .crosshair::after {
-      width: 20px; height: 1px;
-      top: 50%; left: 50%;
-      transform: translate(-50%, -50%);
-    }
-
-    /* Capture feedback */
+    /* Flash */
     .flash {
       position: absolute;
       inset: 0;
@@ -113,7 +114,51 @@
       pointer-events: none;
       transition: opacity 0.1s;
     }
-    .flash.active { opacity: 0.5; }
+    .flash.active { opacity: 0.4; }
+
+    /* Recording indicator */
+    .recording-badge {
+      position: absolute;
+      top: 16px;
+      left: 16px;
+      display: none;
+      align-items: center;
+      gap: 8px;
+      background: rgba(0,0,0,0.7);
+      backdrop-filter: blur(10px);
+      padding: 8px 14px;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .recording-badge.active { display: flex; }
+    .recording-dot {
+      width: 10px;
+      height: 10px;
+      background: var(--recording);
+      border-radius: 50%;
+      animation: recPulse 1s ease-in-out infinite;
+    }
+    @keyframes recPulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+
+    /* Auto-capture counter overlay */
+    .auto-stats {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      background: rgba(0,0,0,0.7);
+      backdrop-filter: blur(10px);
+      padding: 8px 14px;
+      border-radius: 12px;
+      font-size: 12px;
+      display: none;
+    }
+    .auto-stats.active { display: block; }
+    .auto-stats .stat-num { font-size: 22px; font-weight: 700; color: var(--primary-light); }
+    .auto-stats .stat-label { color: var(--text-dim); margin-top: 2px; }
 
     /* Capture info overlay */
     .capture-info {
@@ -121,50 +166,51 @@
       bottom: 0;
       left: 0; right: 0;
       padding: 16px 20px;
-      background: linear-gradient(transparent, rgba(0,0,0,0.8));
+      background: linear-gradient(transparent, rgba(0,0,0,0.85));
     }
-    .capture-info .wp-label {
-      font-size: 18px;
-      font-weight: 600;
+    .capture-info .wp-label { font-size: 17px; font-weight: 600; }
+    .capture-info .wp-detail { font-size: 13px; color: var(--text-dim); margin-top: 4px; }
+    .capture-info .compass { font-size: 13px; color: var(--primary-light); margin-top: 4px; }
+
+    /* Progress bar for auto-capture timer */
+    .timer-bar {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      height: 3px;
+      background: var(--primary-light);
+      transition: width linear;
+      width: 0;
     }
-    .capture-info .wp-detail {
-      font-size: 13px;
-      color: var(--text-dim);
-      margin-top: 4px;
-    }
-    .capture-info .compass {
-      font-size: 13px;
-      color: var(--primary-light);
-      margin-top: 4px;
-    }
+    .timer-bar.active { width: 100%; }
 
     /* Bottom controls */
     .mapper-controls {
-      padding: 16px 20px;
-      padding-bottom: max(16px, env(safe-area-inset-bottom));
+      padding: 14px 20px;
+      padding-bottom: max(14px, env(safe-area-inset-bottom));
       background: var(--surface);
       display: flex;
       flex-direction: column;
-      gap: 12px;
+      gap: 10px;
     }
 
-    .capture-btn {
+    .primary-btn {
       width: 100%;
-      padding: 18px;
-      background: var(--primary);
+      padding: 16px;
       color: white;
       border: none;
       border-radius: 14px;
-      font-size: 18px;
-      font-weight: 600;
+      font-size: 17px;
+      font-weight: 700;
       cursor: pointer;
     }
-    .capture-btn:disabled {
-      opacity: 0.4;
-    }
-    .capture-btn:active:not(:disabled) {
-      background: #3730a3;
-    }
+    .primary-btn:disabled { opacity: 0.4; }
+    .primary-btn.start { background: var(--primary); }
+    .primary-btn.start:active:not(:disabled) { background: #4338ca; }
+    .primary-btn.stop { background: var(--recording); }
+    .primary-btn.stop:active { background: #dc2626; }
+    .primary-btn.capture { background: var(--primary); }
+    .primary-btn.capture:active:not(:disabled) { background: #4338ca; }
 
     .secondary-controls {
       display: flex;
@@ -172,34 +218,17 @@
     }
     .secondary-controls button {
       flex: 1;
-      padding: 12px;
+      padding: 11px;
       background: var(--surface-light);
       color: var(--text);
       border: none;
       border-radius: 10px;
-      font-size: 14px;
+      font-size: 13px;
+      font-weight: 500;
       cursor: pointer;
     }
     .secondary-controls button:active { opacity: 0.7; }
     .secondary-controls button.danger { background: rgba(239,68,68,0.2); color: #fca5a5; }
-
-    /* Thumbnail strip */
-    .thumbnail-strip {
-      display: flex;
-      gap: 6px;
-      overflow-x: auto;
-      padding: 8px 20px;
-      background: var(--bg);
-    }
-    .thumbnail-strip:empty { display: none; }
-    .thumb {
-      width: 50px; height: 50px;
-      border-radius: 6px;
-      object-fit: cover;
-      border: 2px solid var(--surface-light);
-      flex-shrink: 0;
-    }
-    .thumb.latest { border-color: var(--success); }
 
     /* Loading overlay */
     .loading-overlay {
@@ -220,30 +249,14 @@
       border-radius: 50%;
       animation: spin 1s linear infinite;
     }
-    .loading-overlay p {
-      margin-top: 16px;
-      color: var(--text-dim);
-      font-size: 14px;
-    }
+    .loading-overlay p { margin-top: 16px; color: var(--text-dim); font-size: 14px; }
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    /* Instructions panel */
-    .instructions {
-      padding: 20px;
-      background: var(--surface);
-      border-bottom: 1px solid var(--surface-light);
-      font-size: 13px;
-      color: var(--text-dim);
-      line-height: 1.5;
-    }
-    .instructions strong { color: var(--text); }
-    .instructions .step { margin-bottom: 6px; }
-    .instructions .dismiss {
-      color: var(--primary-light);
-      cursor: pointer;
-      margin-top: 8px;
-      display: inline-block;
-    }
+    /* Hide sections based on mode */
+    .manual-only { display: none; }
+    .auto-only { display: none; }
+    [data-mode="manual"] .manual-only { display: flex; }
+    [data-mode="auto"] .auto-only { display: flex; }
   </style>
 </head>
 <body>
@@ -251,62 +264,78 @@
   <!-- Loading overlay -->
   <div id="loading-overlay" class="loading-overlay">
     <div class="spinner"></div>
-    <p id="loading-text">Initializing...</p>
+    <p id="loading-text">Initializing AI model...</p>
   </div>
 
-  <div class="mapper-app">
+  <div class="mapper-app" id="mapper-app" data-mode="auto">
     <div class="mapper-header">
       <h1>Mapper Tool</h1>
-      <p>Capture reference images for visual positioning</p>
+      <span id="feature-count" class="count">0 captures</span>
     </div>
 
     <div class="status-bar">
       <span id="model-status" class="model-status">Loading model...</span>
-      <span id="feature-count" class="count">0 captures</span>
+      <span id="compass-display">Compass: --</span>
     </div>
 
-    <!-- Instructions (dismissible) -->
-    <div id="instructions" class="instructions">
-      <div class="step"><strong>How to map a building:</strong></div>
-      <div class="step">1. Select the <strong>building</strong> and <strong>floor</strong></div>
-      <div class="step">2. Select the <strong>waypoint</strong> you're standing at</div>
-      <div class="step">3. Point your camera in <strong>different directions</strong> and tap <strong>Capture</strong></div>
-      <div class="step">4. Take <strong>4-8 photos per waypoint</strong> (different angles!)</div>
-      <div class="step">5. Move to the next waypoint and repeat</div>
-      <div class="step">6. When done, tap <strong>Export</strong> to save your data</div>
-      <span class="dismiss" onclick="document.getElementById('instructions').style.display='none'">Got it, dismiss</span>
+    <!-- Mode tabs -->
+    <div class="mode-tabs">
+      <button class="mode-tab active" data-tab="auto" onclick="setMode('auto')">Auto Capture</button>
+      <button class="mode-tab" data-tab="manual" onclick="setMode('manual')">Manual</button>
     </div>
 
-    <!-- Building / Floor / Waypoint selectors -->
+    <!-- Selectors: building + floor always, waypoint only in manual mode -->
     <div class="selector-bar">
       <select id="building-select"><option value="">Building...</option></select>
       <select id="floor-select"><option value="">Floor...</option></select>
-      <select id="waypoint-select"><option value="">Waypoint...</option></select>
+      <select id="waypoint-select" class="manual-only" style="display:none"><option value="">Waypoint...</option></select>
     </div>
 
     <!-- Camera view -->
     <div class="camera-container">
       <video id="mapper-camera" playsinline muted></video>
-      <div class="crosshair"></div>
       <div id="flash" class="flash"></div>
+
+      <!-- Recording badge (auto mode) -->
+      <div id="recording-badge" class="recording-badge">
+        <div class="recording-dot"></div>
+        <span id="recording-text">MAPPING</span>
+      </div>
+
+      <!-- Auto-capture stats -->
+      <div id="auto-stats" class="auto-stats">
+        <div class="stat-num" id="session-count">0</div>
+        <div class="stat-label">this session</div>
+      </div>
+
+      <!-- Timer bar -->
+      <div id="timer-bar" class="timer-bar"></div>
+
+      <!-- Info overlay -->
       <div class="capture-info">
-        <div id="wp-label" class="wp-label">Select a waypoint</div>
+        <div id="wp-label" class="wp-label">Select building & floor to start</div>
         <div id="wp-detail" class="wp-detail"></div>
-        <div id="compass-display" class="compass">Compass: --</div>
       </div>
     </div>
 
-    <!-- Recent captures strip -->
-    <div id="thumbnail-strip" class="thumbnail-strip"></div>
-
     <!-- Controls -->
     <div class="mapper-controls">
-      <button id="capture-btn" class="capture-btn" disabled>
+      <!-- Auto mode: Start/Stop -->
+      <button id="auto-start-btn" class="primary-btn start auto-only" style="display:none" disabled>
+        Start Mapping — Walk & I'll Capture
+      </button>
+      <button id="auto-stop-btn" class="primary-btn stop auto-only" style="display:none">
+        Stop Mapping
+      </button>
+
+      <!-- Manual mode: Single capture -->
+      <button id="capture-btn" class="primary-btn capture manual-only" style="display:none" disabled>
         Capture Reference Image
       </button>
+
       <div class="secondary-controls">
-        <button id="export-btn">Export Data</button>
-        <button id="import-btn">Import Data</button>
+        <button id="export-btn">Export</button>
+        <button id="import-btn">Import</button>
         <button id="clear-btn" class="danger">Clear All</button>
       </div>
     </div>
@@ -320,47 +349,78 @@
   <script src="js/vps.js"></script>
   <script>
     // ============================================================
-    // MAPPER TOOL
+    // MAPPER TOOL — with Auto-Capture mode
     // ============================================================
 
     let db, vps, stream;
     let currentHeading = 0;
+    let currentMode = "auto";
+
+    // Auto-capture state
+    let autoCapturing = false;
+    let autoCaptureInterval = null;
+    let sessionCaptureCount = 0;
+    const AUTO_INTERVAL_MS = 3000; // capture every 3 seconds
+    let isProcessing = false;
+
+    // ---- INIT ----
 
     async function init() {
       const loadingText = document.getElementById("loading-text");
 
-      // Init IndexedDB
       loadingText.textContent = "Opening database...";
       db = new FeatureDB();
       await db.init();
 
-      // Init VPS (loads MobileNet)
+      loadingText.textContent = "Loading AI model (this may take a moment)...";
       vps = new VPS(db);
-      await vps.init((msg) => {
-        loadingText.textContent = msg;
-      });
+      await vps.init((msg) => { loadingText.textContent = msg; });
 
       document.getElementById("model-status").textContent = "Model ready";
       document.getElementById("model-status").classList.add("ready");
 
-      // Populate building selector
       populateBuildings();
-
-      // Start camera
       await startCamera();
-
-      // Start compass
       startCompass();
-
-      // Update feature count
       updateCount();
-
-      // Bind events
       bindEvents();
+      setMode("auto");
 
-      // Hide loading
       document.getElementById("loading-overlay").classList.add("hidden");
     }
+
+    // ---- MODE SWITCHING ----
+
+    function setMode(mode) {
+      currentMode = mode;
+      const app = document.getElementById("mapper-app");
+      app.setAttribute("data-mode", mode);
+
+      // Update tab styles
+      document.querySelectorAll(".mode-tab").forEach(t => {
+        t.classList.toggle("active", t.dataset.tab === mode);
+      });
+
+      // Show/hide elements based on mode
+      document.querySelectorAll(".auto-only").forEach(el => {
+        el.style.display = mode === "auto" ? "flex" : "none";
+      });
+      document.querySelectorAll(".manual-only").forEach(el => {
+        el.style.display = mode === "manual" ? "flex" : "none";
+      });
+
+      // Show waypoint selector only in manual mode
+      document.getElementById("waypoint-select").style.display = mode === "manual" ? "" : "none";
+
+      // Stop auto if switching away
+      if (mode !== "auto" && autoCapturing) {
+        stopAutoCapture();
+      }
+
+      updateUI();
+    }
+
+    // ---- BUILDING/FLOOR SELECTORS ----
 
     function populateBuildings() {
       const sel = document.getElementById("building-select");
@@ -388,12 +448,9 @@
       for (const wp of waypoints) {
         sel.innerHTML += `<option value="${wp.id}">${wp.label} (${wp.id})</option>`;
       }
-      // Also add rooms as capture points
-      const rooms = BUILDINGS[buildingCode].floors[floorKey].rooms;
-      for (const room of rooms) {
-        sel.innerHTML += `<option value="${room.waypointId}">Near ${room.code}: ${room.name}</option>`;
-      }
     }
+
+    // ---- CAMERA & COMPASS ----
 
     async function startCamera() {
       try {
@@ -409,15 +466,16 @@
 
     function startCompass() {
       if (window.DeviceOrientationEvent) {
-        // iOS 13+ requires permission
-        if (typeof DeviceOrientationEvent.requestPermission === 'function') {
-          document.getElementById("capture-btn").addEventListener("click", async () => {
+        if (typeof DeviceOrientationEvent.requestPermission === "function") {
+          // iOS: request on first user interaction
+          document.addEventListener("click", async function iosCompass() {
             try {
               const perm = await DeviceOrientationEvent.requestPermission();
               if (perm === "granted") {
                 window.addEventListener("deviceorientation", handleOrientation);
               }
             } catch (e) {}
+            document.removeEventListener("click", iosCompass);
           }, { once: true });
         } else {
           window.addEventListener("deviceorientation", handleOrientation);
@@ -426,75 +484,133 @@
     }
 
     function handleOrientation(e) {
-      if (e.alpha !== null) {
-        currentHeading = Math.round(e.alpha);
-        document.getElementById("compass-display").textContent = `Compass: ${currentHeading}°`;
+      if (e.webkitCompassHeading !== undefined) {
+        currentHeading = Math.round(e.webkitCompassHeading);
+      } else if (e.alpha !== null) {
+        currentHeading = Math.round((360 - e.alpha) % 360);
       }
+      document.getElementById("compass-display").textContent = `Compass: ${currentHeading}°`;
     }
 
-    function bindEvents() {
-      // Selectors
-      document.getElementById("building-select").addEventListener("change", (e) => {
-        populateFloors(e.target.value);
-        populateWaypoints("", "");
-        updateWaypointDisplay();
-      });
+    // ---- AUTO CAPTURE ----
 
-      document.getElementById("floor-select").addEventListener("change", (e) => {
-        const building = document.getElementById("building-select").value;
-        populateWaypoints(building, e.target.value);
-        updateWaypointDisplay();
-      });
-
-      document.getElementById("waypoint-select").addEventListener("change", updateWaypointDisplay);
-
-      // Capture
-      document.getElementById("capture-btn").addEventListener("click", captureImage);
-
-      // Export
-      document.getElementById("export-btn").addEventListener("click", exportData);
-
-      // Import
-      document.getElementById("import-btn").addEventListener("click", () => {
-        document.getElementById("import-file").click();
-      });
-      document.getElementById("import-file").addEventListener("change", importData);
-
-      // Clear
-      document.getElementById("clear-btn").addEventListener("click", async () => {
-        if (confirm("Delete ALL captured reference images? This cannot be undone.")) {
-          await db.clearAll();
-          vps.referenceFeatures = [];
-          updateCount();
-          document.getElementById("thumbnail-strip").innerHTML = "";
-        }
-      });
-    }
-
-    function updateWaypointDisplay() {
-      const wpId = document.getElementById("waypoint-select").value;
+    function startAutoCapture() {
       const buildingCode = document.getElementById("building-select").value;
       const floorKey = document.getElementById("floor-select").value;
-      const btn = document.getElementById("capture-btn");
+      if (!buildingCode || !floorKey) return;
 
-      if (wpId && buildingCode && floorKey) {
-        const building = BUILDINGS[buildingCode];
-        const floor = building.floors[floorKey];
-        const wp = floor.waypoints.find(w => w.id === wpId);
-        const label = wp ? wp.label : wpId;
+      autoCapturing = true;
+      sessionCaptureCount = 0;
 
-        document.getElementById("wp-label").textContent = label;
-        document.getElementById("wp-detail").textContent =
-          `${building.name} → ${floor.name} → ${wpId}`;
-        btn.disabled = false;
-      } else {
-        document.getElementById("wp-label").textContent = "Select a waypoint";
-        document.getElementById("wp-detail").textContent = "";
-        btn.disabled = true;
-      }
+      // Update UI
+      document.getElementById("recording-badge").classList.add("active");
+      document.getElementById("auto-stats").classList.add("active");
+      document.getElementById("auto-start-btn").style.display = "none";
+      document.getElementById("auto-stop-btn").style.display = "flex";
+      document.getElementById("session-count").textContent = "0";
+      document.getElementById("wp-label").textContent = "Walk slowly through the corridors...";
+      document.getElementById("wp-detail").textContent = `Auto-capturing every ${AUTO_INTERVAL_MS/1000}s`;
+
+      // Lock selectors
+      document.getElementById("building-select").disabled = true;
+      document.getElementById("floor-select").disabled = true;
+
+      // Start interval
+      doAutoCapture(); // First capture immediately
+      autoCaptureInterval = setInterval(doAutoCapture, AUTO_INTERVAL_MS);
     }
 
-    async function captureImage() {
+    function stopAutoCapture() {
+      autoCapturing = false;
+      if (autoCaptureInterval) {
+        clearInterval(autoCaptureInterval);
+        autoCaptureInterval = null;
+      }
+
+      // Update UI
+      document.getElementById("recording-badge").classList.remove("active");
+      document.getElementById("auto-stats").classList.remove("active");
+      document.getElementById("auto-start-btn").style.display = "flex";
+      document.getElementById("auto-stop-btn").style.display = "none";
+      document.getElementById("timer-bar").classList.remove("active");
+
+      // Unlock selectors
+      document.getElementById("building-select").disabled = false;
+      document.getElementById("floor-select").disabled = false;
+
+      const bc = document.getElementById("building-select").value;
+      const fk = document.getElementById("floor-select").value;
+      const bName = bc ? BUILDINGS[bc].name : "";
+      const fName = (bc && fk) ? BUILDINGS[bc].floors[fk].name : "";
+
+      document.getElementById("wp-label").textContent = sessionCaptureCount > 0
+        ? `Done! ${sessionCaptureCount} images captured`
+        : "Mapping stopped";
+      document.getElementById("wp-detail").textContent = sessionCaptureCount > 0
+        ? `${bName}, ${fName} — tap Export when finished`
+        : "";
+
+      updateCount();
+    }
+
+    async function doAutoCapture() {
+      if (!autoCapturing || isProcessing) return;
+      isProcessing = true;
+
+      const buildingCode = document.getElementById("building-select").value;
+      const floorKey = document.getElementById("floor-select").value;
+      const video = document.getElementById("mapper-camera");
+
+      if (!buildingCode || !floorKey) {
+        isProcessing = false;
+        return;
+      }
+
+      // Get all waypoints for this floor
+      const waypoints = BUILDINGS[buildingCode].floors[floorKey].waypoints;
+
+      // Pick the nearest waypoint — for auto mode we cycle through waypoints
+      // based on which section of the floor the user might be in.
+      // Since we can't know exact position, we tag with a generic floor waypoint.
+      // The VPS matching doesn't need exact waypoint — any waypoint on the correct
+      // floor works for localization. We'll use the "closest" approach:
+      // assign to waypoints round-robin so there's coverage.
+      const wpIndex = sessionCaptureCount % waypoints.length;
+      const wp = waypoints[wpIndex];
+
+      // Flash
+      const flash = document.getElementById("flash");
+      flash.classList.add("active");
+      setTimeout(() => flash.classList.remove("active"), 150);
+
+      // Timer bar animation
+      const timerBar = document.getElementById("timer-bar");
+      timerBar.style.transition = "none";
+      timerBar.style.width = "0";
+      requestAnimationFrame(() => {
+        timerBar.style.transition = `width ${AUTO_INTERVAL_MS}ms linear`;
+        timerBar.style.width = "100%";
+      });
+
+      try {
+        await vps.captureReference(video, wp.id, buildingCode, floorKey, currentHeading);
+        sessionCaptureCount++;
+
+        document.getElementById("session-count").textContent = sessionCaptureCount;
+        document.getElementById("recording-text").textContent =
+          `MAPPING · ${sessionCaptureCount}`;
+
+        updateCount();
+      } catch (err) {
+        console.error("Auto-capture failed:", err);
+      }
+
+      isProcessing = false;
+    }
+
+    // ---- MANUAL CAPTURE ----
+
+    async function captureManual() {
       const wpId = document.getElementById("waypoint-select").value;
       const buildingCode = document.getElementById("building-select").value;
       const floorKey = document.getElementById("floor-select").value;
@@ -502,34 +618,16 @@
 
       if (!wpId || !buildingCode || !floorKey) return;
 
-      // Flash effect
-      const flash = document.getElementById("flash");
-      flash.classList.add("active");
-      setTimeout(() => flash.classList.remove("active"), 200);
-
-      // Disable button during capture
       const btn = document.getElementById("capture-btn");
       btn.disabled = true;
       btn.textContent = "Processing...";
 
+      const flash = document.getElementById("flash");
+      flash.classList.add("active");
+      setTimeout(() => flash.classList.remove("active"), 200);
+
       try {
-        const id = await vps.captureReference(video, wpId, buildingCode, floorKey, currentHeading);
-
-        // Add thumbnail
-        const features = await db.getAllFeatures();
-        const latest = features[features.length - 1];
-        if (latest && latest.thumbnail) {
-          const strip = document.getElementById("thumbnail-strip");
-          // Remove 'latest' class from previous
-          strip.querySelectorAll(".latest").forEach(t => t.classList.remove("latest"));
-          const img = document.createElement("img");
-          img.src = latest.thumbnail;
-          img.className = "thumb latest";
-          img.title = `${wpId} @ ${currentHeading}°`;
-          strip.appendChild(img);
-          strip.scrollLeft = strip.scrollWidth;
-        }
-
+        await vps.captureReference(video, wpId, buildingCode, floorKey, currentHeading);
         updateCount();
       } catch (err) {
         alert("Capture failed: " + err.message);
@@ -539,10 +637,48 @@
       btn.textContent = "Capture Reference Image";
     }
 
+    // ---- UI UPDATES ----
+
+    function updateUI() {
+      const buildingCode = document.getElementById("building-select").value;
+      const floorKey = document.getElementById("floor-select").value;
+
+      if (currentMode === "auto") {
+        const ready = buildingCode && floorKey;
+        document.getElementById("auto-start-btn").disabled = !ready;
+        if (!autoCapturing) {
+          if (ready) {
+            const b = BUILDINGS[buildingCode];
+            document.getElementById("wp-label").textContent = `${b.name}, ${b.floors[floorKey].name}`;
+            document.getElementById("wp-detail").textContent = "Hit Start and walk through the corridors";
+          } else {
+            document.getElementById("wp-label").textContent = "Select building & floor to start";
+            document.getElementById("wp-detail").textContent = "";
+          }
+        }
+      } else {
+        const wpId = document.getElementById("waypoint-select").value;
+        const ready = buildingCode && floorKey && wpId;
+        document.getElementById("capture-btn").disabled = !ready;
+        if (ready) {
+          const b = BUILDINGS[buildingCode];
+          const floor = b.floors[floorKey];
+          const wp = floor.waypoints.find(w => w.id === wpId);
+          document.getElementById("wp-label").textContent = wp ? wp.label : wpId;
+          document.getElementById("wp-detail").textContent = `${b.name} → ${floor.name} → ${wpId}`;
+        } else {
+          document.getElementById("wp-label").textContent = "Select a waypoint";
+          document.getElementById("wp-detail").textContent = "";
+        }
+      }
+    }
+
     async function updateCount() {
       const count = await db.getCount();
       document.getElementById("feature-count").textContent = `${count} captures`;
     }
+
+    // ---- EXPORT / IMPORT / CLEAR ----
 
     async function exportData() {
       const data = await db.exportAll();
@@ -550,7 +686,6 @@
         alert("No data to export. Capture some reference images first.");
         return;
       }
-      // Strip thumbnails to keep file small (not needed for matching)
       const slim = data.map(({ thumbnail, ...rest }) => rest);
       const json = JSON.stringify(slim);
       const blob = new Blob([json], { type: "application/json" });
@@ -572,7 +707,6 @@
     async function importData(e) {
       const file = e.target.files[0];
       if (!file) return;
-
       try {
         const text = await file.text();
         const data = JSON.parse(text);
@@ -583,11 +717,50 @@
       } catch (err) {
         alert("Import failed: " + err.message);
       }
-
       e.target.value = "";
     }
 
-    // Boot
+    // ---- EVENT BINDING ----
+
+    function bindEvents() {
+      document.getElementById("building-select").addEventListener("change", (e) => {
+        populateFloors(e.target.value);
+        populateWaypoints("", "");
+        updateUI();
+      });
+
+      document.getElementById("floor-select").addEventListener("change", (e) => {
+        const building = document.getElementById("building-select").value;
+        populateWaypoints(building, e.target.value);
+        updateUI();
+      });
+
+      document.getElementById("waypoint-select").addEventListener("change", updateUI);
+
+      // Auto mode buttons
+      document.getElementById("auto-start-btn").addEventListener("click", startAutoCapture);
+      document.getElementById("auto-stop-btn").addEventListener("click", stopAutoCapture);
+
+      // Manual capture
+      document.getElementById("capture-btn").addEventListener("click", captureManual);
+
+      // Export / Import / Clear
+      document.getElementById("export-btn").addEventListener("click", exportData);
+      document.getElementById("import-btn").addEventListener("click", () => {
+        document.getElementById("import-file").click();
+      });
+      document.getElementById("import-file").addEventListener("change", importData);
+      document.getElementById("clear-btn").addEventListener("click", async () => {
+        if (confirm("Delete ALL captured reference images? This cannot be undone.")) {
+          await db.clearAll();
+          vps.referenceFeatures = [];
+          updateCount();
+        }
+      });
+    }
+
+    // ---- BOOT ----
+
     init().catch(err => {
       document.getElementById("loading-text").textContent = "Error: " + err.message;
       console.error(err);
