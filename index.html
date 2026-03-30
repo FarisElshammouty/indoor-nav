@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
-  <link rel="stylesheet" href="css/style.css?v=9">
+  <link rel="stylesheet" href="css/style.css?v=10">
   <link rel="manifest" href="manifest.json">
 </head>
 <body>
@@ -30,7 +30,7 @@
 
       <!-- Status banner -->
       <div id="map-status" class="map-status">
-        <span class="status-good">GPS + Camera navigation ready</span>
+        <span class="status-warn">Checking server...</span>
       </div>
 
       <div class="search-box">
@@ -100,10 +100,10 @@
         <span id="loc-confidence" class="confidence-badge">--</span>
       </div>
 
-      <!-- OCR status indicator -->
-      <div id="ocr-status" class="ocr-status hidden">
-        <div class="ocr-scan-line"></div>
-        <span id="ocr-status-text">Scanning for signs...</span>
+      <!-- Localization status indicator -->
+      <div id="loc-status" class="loc-status hidden">
+        <div class="loc-scan-line"></div>
+        <span id="loc-status-text">Scanning environment...</span>
       </div>
 
       <!-- Outdoor info panel (shown when navigating between buildings) -->
@@ -112,7 +112,7 @@
           <div id="outdoor-building-name" class="outdoor-building-name">Poole House</div>
           <div id="outdoor-distance" class="outdoor-distance">150m away</div>
         </div>
-        <div class="outdoor-hint">Walk toward the building, then point camera at room signs</div>
+        <div class="outdoor-hint">Walk toward the building — camera will detect your position inside</div>
       </div>
 
       <!-- Bottom: Small destination pill -->
@@ -126,17 +126,14 @@
     </div>
   </div>
 
-  <!-- Tesseract.js for OCR -->
-  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-
-  <!-- App scripts -->
+  <!-- App scripts (no external ML libraries needed — localization runs on server) -->
   <script src="js/buildings.js"></script>
   <script src="js/roomParser.js"></script>
   <script src="js/compass.js"></script>
   <script src="js/pathfinder.js"></script>
   <script src="js/gps.js"></script>
-  <script src="js/ocr.js"></script>
   <script src="js/stepcounter.js"></script>
+  <script src="js/localizer.js"></script>
   <script src="js/location-manager.js"></script>
   <script src="js/app.js"></script>
 </body>

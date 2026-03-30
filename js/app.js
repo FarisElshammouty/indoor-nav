@@ -1,5 +1,5 @@
 // ============================================================
-// MAIN APP CONTROLLER — GPS + OCR + Step Counting Navigation
+// MAIN APP CONTROLLER — GPS + Visual Localization + Step Counting
 // ============================================================
 
 class IndoorNavApp {
@@ -22,6 +22,19 @@ class IndoorNavApp {
     this._bindEvents();
     this._populateAutocomplete();
     this._populateBuildingsGrid();
+
+    // Check server status on load
+    this._checkServerStatus();
+  }
+
+  async _checkServerStatus() {
+    const status = await this.locationManager.localizer.checkServer();
+    const statusEl = document.getElementById("map-status");
+    if (status) {
+      statusEl.innerHTML = `<span class="status-good">Server connected — ${status.modelsLoaded} models loaded</span>`;
+    } else {
+      statusEl.innerHTML = `<span class="status-warn">Localization server offline — GPS-only mode</span>`;
+    }
   }
 
   // ---- UI BINDING ----
@@ -112,7 +125,7 @@ class IndoorNavApp {
     if (screenId !== "ar-screen") {
       this._stopCamera();
       this.compass.stop();
-      this.locationManager.stopOCR();
+      this.locationManager.stopVisualLocalization();
     }
   }
 
@@ -178,13 +191,13 @@ class IndoorNavApp {
       this._updateArrowRotation(heading);
     });
 
-    // Start OCR scanning with the camera feed
+    // Start visual localization with the camera feed
     const video = document.getElementById("ar-camera-feed");
-    this.locationManager.startOCR(video);
+    this.locationManager.startVisualLocalization(video);
 
     // Show initial status
     document.getElementById("instruction-text").textContent = "Looking for your location...";
-    this._showOCRStatus("Point camera at room signs or walk outside");
+    this._showLocStatus("Scanning environment...");
   }
 
   // ---- LOCATION UPDATES ----
@@ -201,24 +214,20 @@ class IndoorNavApp {
         this._handleNearBuilding(update);
         break;
 
-      case "ocr_room":
-        this._handleOCRRoom(update);
+      case "visual_room":
+        this._handleVisualRoom(update);
         break;
 
-      case "ocr_floor":
-        this._handleOCRFloor(update);
-        break;
-
-      case "ocr_building":
-        this._handleOCRBuilding(update);
+      case "visual_position":
+        this._handleVisualPosition(update);
         break;
 
       case "step":
         this._handleStepUpdate(update);
         break;
 
-      case "ocr_timeout":
-        this._showOCRStatus(update.message);
+      case "loc_timeout":
+        this._showLocStatus(update.message);
         break;
 
       case "status":
@@ -235,7 +244,7 @@ class IndoorNavApp {
   _handleOutdoorUpdate(update) {
     // Show outdoor navigation info
     document.getElementById("outdoor-info").classList.remove("hidden");
-    document.getElementById("ocr-status").classList.add("hidden");
+    document.getElementById("loc-status").classList.add("hidden");
 
     document.getElementById("outdoor-building-name").textContent = update.targetBuildingName;
     document.getElementById("outdoor-distance").textContent = `${update.distance}m away`;
@@ -258,21 +267,21 @@ class IndoorNavApp {
 
   _handleNearBuilding(update) {
     document.getElementById("outdoor-info").classList.add("hidden");
-    document.getElementById("ocr-status").classList.remove("hidden");
+    document.getElementById("loc-status").classList.remove("hidden");
 
     document.getElementById("instruction-text").textContent =
       `Entering ${update.buildingName}`;
     document.getElementById("distance-display").textContent = `${Math.round(update.distance)}m`;
     document.getElementById("current-location").textContent = update.buildingName;
 
-    this._showOCRStatus("Point camera at room number signs");
+    this._showLocStatus("Scanning environment for position...");
   }
 
-  _handleOCRRoom(update) {
+  _handleVisualRoom(update) {
     // Room detected! Calculate path and start turn-by-turn
     document.getElementById("outdoor-info").classList.add("hidden");
-    document.getElementById("ocr-status").classList.remove("hidden");
-    this._showOCRStatus(`Detected: ${update.code}`);
+    document.getElementById("loc-status").classList.remove("hidden");
+    this._showLocStatus(`Located: ${update.code}`);
 
     // Find path from detected room's waypoint to destination
     const startWaypointId = update.waypointId;
@@ -304,22 +313,35 @@ class IndoorNavApp {
     this._renderStep();
   }
 
-  _handleOCRFloor(update) {
-    // Floor sign detected — update display
-    if (this.locationManager.currentBuilding) {
-      const building = this.locationManager.currentBuilding.building;
-      const floor = building.floors[update.floorKey];
-      if (floor) {
-        document.getElementById("current-location").textContent =
-          `${building.name} — ${floor.name}`;
+  _handleVisualPosition(update) {
+    // We know building/floor/approximate position but no specific room
+    document.getElementById("outdoor-info").classList.add("hidden");
+    document.getElementById("loc-status").classList.remove("hidden");
+
+    const building = BUILDINGS[update.building];
+    const floor = building ? building.floors[update.floor] : null;
+
+    if (building && floor) {
+      document.getElementById("current-location").textContent =
+        `${building.name} — ${floor.name}`;
+    }
+
+    // Try to find path from nearest waypoint
+    if (update.nearestWaypoint) {
+      const path = this.pathfinder.findPath(
+        update.nearestWaypoint,
+        this.destination.room.waypointId
+      );
+
+      if (path) {
+        this.steps = this.pathfinder.getDirections(path, this.destination.room);
+        this.currentStep = 0;
+        this._renderStep();
+        return;
       }
     }
-    this._showOCRStatus(`Floor ${update.floorKey} detected — keep scanning for room signs`);
-  }
 
-  _handleOCRBuilding(update) {
-    document.getElementById("current-location").textContent = update.buildingName;
-    this._showOCRStatus(`${update.buildingName} — scan room number signs`);
+    this._showLocStatus("Position detected — refining...");
   }
 
   _handleStepUpdate(update) {
@@ -491,9 +513,9 @@ class IndoorNavApp {
     }
   }
 
-  _showOCRStatus(text) {
-    const el = document.getElementById("ocr-status");
-    const textEl = document.getElementById("ocr-status-text");
+  _showLocStatus(text) {
+    const el = document.getElementById("loc-status");
+    const textEl = document.getElementById("loc-status-text");
     if (el) el.classList.remove("hidden");
     if (textEl) textEl.textContent = text;
   }

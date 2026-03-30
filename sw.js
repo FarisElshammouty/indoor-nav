@@ -1,5 +1,5 @@
 // Service Worker for offline support
-const CACHE_NAME = "indoor-nav-v12";
+const CACHE_NAME = "indoor-nav-v13";
 const ASSETS = [
   "/",
   "/index.html",
@@ -9,8 +9,8 @@ const ASSETS = [
   "/js/compass.js",
   "/js/pathfinder.js",
   "/js/gps.js",
-  "/js/ocr.js",
   "/js/stepcounter.js",
+  "/js/localizer.js",
   "/js/location-manager.js",
   "/js/app.js",
   "/manifest.json",

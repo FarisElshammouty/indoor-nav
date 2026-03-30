@@ -1,45 +1,46 @@
 // ============================================================
-// LOCATION MANAGER — Fuses GPS, OCR, and Step Counting
+// LOCATION MANAGER — Fuses GPS, Visual Localization, and Steps
 // ============================================================
 // Manages the user's position using three sources:
 //   - GPS: outdoor positioning between buildings
-//   - OCR: indoor positioning by reading room/floor signs
-//   - StepCounter: dead reckoning between OCR fixes
+//   - Visual Localizer: indoor positioning via server-side
+//     3D model matching (COLMAP + hloc)
+//   - StepCounter: dead reckoning between visual fixes
 //
 // Modes:
 //   - "outdoor":       GPS active, guiding toward building
 //   - "transitioning": Near building entrance, switching to indoor
-//   - "indoor":        OCR + step counting active
+//   - "indoor":        Visual localization + step counting active
 // ============================================================
 
 class LocationManager {
   constructor(buildings) {
     this.buildings = buildings;
     this.gps = new GPSNavigator(buildings);
-    this.ocr = new OCRScanner(buildings);
+    this.localizer = new VisualLocalizer(buildings);
     this.stepCounter = new StepCounter();
 
     // Current state
-    this.mode = "initializing";  // outdoor | transitioning | indoor | initializing
+    this.mode = "initializing"; // outdoor | transitioning | indoor | initializing
     this.currentBuilding = null; // { code, building } — which building user is in/near
-    this.currentFloor = null;    // floor key (e.g., "G", "1", "2")
+    this.currentFloor = null; // floor key (e.g., "G", "1", "2")
     this.currentWaypoint = null; // nearest waypoint ID
-    this.lastOCRCode = null;     // last room code seen by OCR
-    this.confidence = 0;         // 0-100 confidence in current position
+    this.lastLocCode = null; // last room code from visual localization
+    this.confidence = 0; // 0-100 confidence in current position
 
     // Callbacks
     this._onLocationUpdate = null;
     this._onModeChange = null;
 
     // Thresholds
-    this.buildingProximity = 30;     // meters — when to consider user "near" a building
-    this.indoorGPSAccuracy = 25;     // meters — GPS accuracy drops indoors
+    this.buildingProximity = 30; // meters — when to consider user "near" a building
+    this.indoorGPSAccuracy = 25; // meters — GPS accuracy drops indoors
     this.outdoorTransitionDist = 50; // meters — distance from building to switch back to outdoor
-    this.ocrTimeoutMs = 30000;       // ms — if no OCR match in this time, show help
+    this.locTimeoutMs = 30000; // ms — if no visual match in this time, show help
 
     // State tracking
-    this._lastOCRTime = 0;
-    this._ocrFailTimer = null;
+    this._lastLocTime = 0;
+    this._locFailTimer = null;
     this._isActive = false;
   }
 
@@ -52,10 +53,19 @@ class LocationManager {
     // Start GPS immediately
     this.gps.start((gpsData) => this._handleGPS(gpsData));
 
-    // Initialize OCR engine in the background
-    await this.ocr.init((msg) => {
-      this._emitUpdate({ status: msg });
-    });
+    // Check if localization server is available
+    const serverStatus = await this.localizer.checkServer();
+    if (serverStatus) {
+      this._emitUpdate({
+        type: "status",
+        status: `Server connected — ${serverStatus.modelsLoaded} models loaded`,
+      });
+    } else {
+      this._emitUpdate({
+        type: "status",
+        status: "Localization server not available — using GPS only",
+      });
+    }
 
     // Start step counter
     this.stepCounter.start((stepData) => this._handleStep(stepData));
@@ -68,31 +78,35 @@ class LocationManager {
   stop() {
     this._isActive = false;
     this.gps.stop();
-    this.ocr.stopScanning();
-    this.ocr.terminate();
+    this.localizer.stopScanning();
     this.stepCounter.stop();
-    if (this._ocrFailTimer) {
-      clearTimeout(this._ocrFailTimer);
-      this._ocrFailTimer = null;
+    if (this._locFailTimer) {
+      clearTimeout(this._locFailTimer);
+      this._locFailTimer = null;
     }
   }
 
-  // Start camera-based OCR scanning (called when camera is available)
-  startOCR(videoElement) {
-    this.ocr.startScanning(videoElement, (result) => this._handleOCR(result));
+  // Start camera-based visual localization (called when camera is available)
+  startVisualLocalization(videoElement) {
+    this.localizer.startScanning(videoElement, (result) =>
+      this._handleLocalization(result)
+    );
 
-    // Set a timeout for OCR failure
-    this._resetOCRTimeout();
+    // Set a timeout for localization failure
+    this._resetLocTimeout();
   }
 
-  stopOCR() {
-    this.ocr.stopScanning();
+  stopVisualLocalization() {
+    this.localizer.stopScanning();
   }
 
   // Set the target building (for outdoor navigation)
   setTargetBuilding(buildingCode) {
     this._targetBuilding = this.buildings[buildingCode] || null;
     this._targetBuildingCode = buildingCode;
+
+    // Give localizer a hint
+    this.localizer.setHints(buildingCode, null);
   }
 
   // ---- GPS HANDLING ----
@@ -101,9 +115,11 @@ class LocationManager {
     if (!this._isActive) return;
 
     if (gpsData.error) {
-      // GPS errors are common indoors — not a problem if we're already indoor
       if (this.mode === "outdoor") {
-        this._emitUpdate({ status: "GPS signal weak — move to open area" });
+        this._emitUpdate({
+          type: "status",
+          status: "GPS signal weak — move to open area",
+        });
       }
       return;
     }
@@ -119,6 +135,10 @@ class LocationManager {
           building: nearest.building,
         };
         this._setMode("transitioning");
+
+        // Update localizer hints
+        this.localizer.setHints(nearest.code, null);
+
         this._emitUpdate({
           type: "near_building",
           building: nearest.code,
@@ -130,7 +150,10 @@ class LocationManager {
         const target = this._targetBuilding || nearest.building;
         const targetCode = this._targetBuildingCode || nearest.code;
         const dist = this.gps.haversineDistance(
-          pos.lat, pos.lng, target.lat, target.lng
+          pos.lat,
+          pos.lng,
+          target.lat,
+          target.lng
         );
         const bearing = this.gps.bearingTo(target.lat, target.lng);
 
@@ -157,27 +180,30 @@ class LocationManager {
     }
   }
 
-  // ---- OCR HANDLING ----
+  // ---- VISUAL LOCALIZATION HANDLING ----
 
-  _handleOCR(result) {
+  _handleLocalization(result) {
     if (!this._isActive) return;
 
-    this._lastOCRTime = Date.now();
-    this._resetOCRTimeout();
+    this._lastLocTime = Date.now();
+    this._resetLocTimeout();
 
     if (result.type === "room") {
-      // Exact room detected! High confidence position
+      // Exact room position detected — high confidence
       this.currentBuilding = {
         code: result.building,
         building: this.buildings[result.building],
       };
       this.currentFloor = result.floor;
       this.currentWaypoint = result.waypointId;
-      this.lastOCRCode = result.code;
+      this.lastLocCode = result.code;
       this.confidence = Math.min(95, result.confidence);
 
       // Reset step counter on new fix
       this.stepCounter.resetDistance();
+
+      // Update localizer hints
+      this.localizer.setHints(result.building, result.floor);
 
       // Switch to indoor mode
       if (this.mode !== "indoor") {
@@ -185,46 +211,46 @@ class LocationManager {
       }
 
       this._emitUpdate({
-        type: "ocr_room",
+        type: "visual_room",
         code: result.code,
         building: result.building,
         floor: result.floor,
         waypointId: result.waypointId,
         confidence: this.confidence,
       });
+    } else if (result.type === "position") {
+      // Position known but no specific room match
+      this.currentBuilding = {
+        code: result.building,
+        building: this.buildings[result.building],
+      };
+      this.currentFloor = result.floor;
+      if (result.nearestWaypoint) {
+        this.currentWaypoint = result.nearestWaypoint;
+      }
+      this.confidence = Math.min(80, result.confidence);
 
-    } else if (result.type === "floor") {
-      // Floor sign detected — update floor but keep other position info
-      this.currentFloor = result.floorKey;
-      this.confidence = Math.max(this.confidence, 50);
+      this.stepCounter.resetDistance();
+      this.localizer.setHints(result.building, result.floor);
 
       if (this.mode !== "indoor") {
         this._setMode("indoor");
       }
 
       this._emitUpdate({
-        type: "ocr_floor",
-        floorKey: result.floorKey,
+        type: "visual_position",
+        building: result.building,
+        floor: result.floor,
+        x: result.x,
+        y: result.y,
+        nearestWaypoint: result.nearestWaypoint,
         confidence: this.confidence,
       });
-
-    } else if (result.type === "building") {
-      // Building name detected
-      this.currentBuilding = {
-        code: result.buildingCode,
-        building: this.buildings[result.buildingCode],
-      };
-
-      if (this.mode === "outdoor" || this.mode === "transitioning") {
-        this._setMode("transitioning");
-      }
-
-      this._emitUpdate({
-        type: "ocr_building",
-        buildingCode: result.buildingCode,
-        buildingName: result.buildingName,
-        confidence: Math.min(60, result.confidence),
-      });
+    } else if (result.type === "no_match") {
+      // Server couldn't determine position from this frame
+      // This is normal — not every frame will match
+      // Confidence degrades slowly
+      this.confidence = Math.max(5, this.confidence - 2);
     }
   }
 
@@ -233,9 +259,8 @@ class LocationManager {
   _handleStep(stepData) {
     if (!this._isActive || this.mode !== "indoor") return;
 
-    // Degrade confidence as user walks further from last OCR fix
-    // Each meter walked without an OCR fix reduces confidence
-    const degradation = stepData.distanceSinceLastFix * 2; // 2% per meter
+    // Degrade confidence as user walks further from last visual fix
+    const degradation = stepData.distanceSinceLastFix * 2;
     this.confidence = Math.max(10, this.confidence - degradation / 50);
 
     this._emitUpdate({
@@ -258,18 +283,19 @@ class LocationManager {
     }
   }
 
-  _resetOCRTimeout() {
-    if (this._ocrFailTimer) {
-      clearTimeout(this._ocrFailTimer);
+  _resetLocTimeout() {
+    if (this._locFailTimer) {
+      clearTimeout(this._locFailTimer);
     }
-    this._ocrFailTimer = setTimeout(() => {
+    this._locFailTimer = setTimeout(() => {
       if (this.mode === "indoor" || this.mode === "transitioning") {
         this._emitUpdate({
-          type: "ocr_timeout",
-          message: "No signs detected. Try pointing camera at room number signs.",
+          type: "loc_timeout",
+          message:
+            "No visual match. Try moving slowly and pointing camera at distinctive features.",
         });
       }
-    }, this.ocrTimeoutMs);
+    }, this.locTimeoutMs);
   }
 
   // ---- EMIT UPDATE ----
