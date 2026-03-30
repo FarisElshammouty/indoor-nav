@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
-  <link rel="stylesheet" href="css/style.css?v=10">
+  <link rel="stylesheet" href="css/style.css?v=11">
   <link rel="manifest" href="manifest.json">
 </head>
 <body>
@@ -70,6 +70,55 @@
         </div>
       </div>
 
+      <!-- Settings Panel -->
+      <div class="settings-section">
+        <button id="settings-toggle" class="settings-toggle">Settings</button>
+        <div id="settings-panel" class="settings-panel hidden">
+
+          <!-- Server URL -->
+          <div class="settings-group">
+            <label class="settings-label">Localization Server URL</label>
+            <div class="settings-row">
+              <input type="url" id="server-url-input" class="settings-input" placeholder="https://your-server.com">
+              <button id="server-url-save" class="settings-btn">Save</button>
+            </div>
+            <div id="server-url-feedback" class="settings-feedback"></div>
+          </div>
+
+          <!-- Step Calibration -->
+          <div class="settings-group">
+            <label class="settings-label">Step Calibration</label>
+            <p class="settings-desc">Current step length: <strong id="current-step-length">0.75m</strong></p>
+            <p class="settings-desc">Walk exactly 10 meters, then press Done to calibrate.</p>
+            <button id="calibrate-btn" class="settings-btn full-width">Calibrate</button>
+            <div id="calibrate-status" class="settings-feedback"></div>
+          </div>
+
+          <!-- Sensor Status -->
+          <div class="settings-group">
+            <label class="settings-label">Sensor Status</label>
+            <div class="sensor-list">
+              <div class="sensor-item">
+                <span>GPS</span>
+                <span class="sensor-status good">Available</span>
+              </div>
+              <div class="sensor-item">
+                <span>Compass</span>
+                <span class="sensor-status good">Available</span>
+              </div>
+              <div class="sensor-item">
+                <span>Barometer</span>
+                <span class="sensor-status" id="baro-status">Checking...</span>
+              </div>
+              <div class="sensor-item">
+                <span>Step Counter</span>
+                <span class="sensor-status good">Available</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div class="app-footer">
         <span>BU Indoor Navigation</span>
       </div>
@@ -86,6 +135,9 @@
         <span id="mode-icon" class="mode-icon"></span>
         <span id="mode-label">Outdoor</span>
       </div>
+
+      <!-- Floor indicator -->
+      <div id="floor-indicator" class="floor-indicator hidden">G</div>
 
       <!-- Top: Arrow + instruction -->
       <div class="ar-top-strip">
@@ -132,6 +184,7 @@
   <script src="js/compass.js"></script>
   <script src="js/pathfinder.js"></script>
   <script src="js/gps.js"></script>
+  <script src="js/barometer.js"></script>
   <script src="js/stepcounter.js"></script>
   <script src="js/localizer.js"></script>
   <script src="js/location-manager.js"></script>

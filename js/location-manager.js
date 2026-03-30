@@ -1,10 +1,11 @@
 // ============================================================
-// LOCATION MANAGER — Fuses GPS, Visual Localization, and Steps
+// LOCATION MANAGER — Fuses GPS, Visual Localization, Barometer & Steps
 // ============================================================
-// Manages the user's position using three sources:
+// Manages the user's position using four sources:
 //   - GPS: outdoor positioning between buildings
 //   - Visual Localizer: indoor positioning via server-side
 //     3D model matching (COLMAP + hloc)
+//   - Barometer: floor detection via pressure changes
 //   - StepCounter: dead reckoning between visual fixes
 //
 // Modes:
@@ -18,6 +19,7 @@ class LocationManager {
     this.buildings = buildings;
     this.gps = new GPSNavigator(buildings);
     this.localizer = new VisualLocalizer(buildings);
+    this.barometer = new Barometer();
     this.stepCounter = new StepCounter();
 
     // Current state
@@ -67,6 +69,14 @@ class LocationManager {
       });
     }
 
+    // Start barometer for floor detection
+    const baroStarted = await this.barometer.start((floorChange) => {
+      this._handleFloorChange(floorChange);
+    });
+    if (baroStarted) {
+      this._emitUpdate({ type: "status", status: "Barometer active — floor detection enabled" });
+    }
+
     // Start step counter
     this.stepCounter.start((stepData) => this._handleStep(stepData));
 
@@ -79,6 +89,7 @@ class LocationManager {
     this._isActive = false;
     this.gps.stop();
     this.localizer.stopScanning();
+    this.barometer.stop();
     this.stepCounter.stop();
     if (this._locFailTimer) {
       clearTimeout(this._locFailTimer);
@@ -202,6 +213,9 @@ class LocationManager {
       // Reset step counter on new fix
       this.stepCounter.resetDistance();
 
+      // Set barometer baseline now that we know the floor
+      this.barometer.setBaseline(Barometer.floorKeyToNumber(result.floor));
+
       // Update localizer hints
       this.localizer.setHints(result.building, result.floor);
 
@@ -251,6 +265,35 @@ class LocationManager {
       // This is normal — not every frame will match
       // Confidence degrades slowly
       this.confidence = Math.max(5, this.confidence - 2);
+    }
+  }
+
+  // ---- BAROMETER FLOOR DETECTION ----
+
+  _handleFloorChange(floorChange) {
+    if (!this._isActive || this.mode !== "indoor") return;
+
+    const newFloorKey = floorChange.newFloorKey;
+
+    // Verify the floor exists in the current building
+    if (this.currentBuilding) {
+      const building = this.currentBuilding.building;
+      if (building.floors[newFloorKey]) {
+        const oldFloor = this.currentFloor;
+        this.currentFloor = newFloorKey;
+
+        // Update localizer hints with new floor
+        this.localizer.setHints(this.currentBuilding.code, newFloorKey);
+
+        this._emitUpdate({
+          type: "floor_change",
+          oldFloor: oldFloor,
+          newFloor: newFloorKey,
+          floorName: building.floors[newFloorKey].name,
+          source: "barometer",
+          confidence: floorChange.confidence,
+        });
+      }
     }
   }
 

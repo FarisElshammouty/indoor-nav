@@ -3,18 +3,29 @@
 // ============================================================
 // Uses the DeviceMotion API to detect steps by analyzing
 // acceleration magnitude peaks. Tracks distance walked
-// since the last known position (OCR or GPS fix).
+// since the last known position fix.
+//
+// Supports calibration: user walks a known distance (e.g. 10m)
+// and the app calculates their personal step length.
+// Calibration is saved to localStorage for persistence.
 // ============================================================
 
 class StepCounter {
   constructor() {
     this.steps = 0;
-    this.distanceSinceLastFix = 0;   // meters since last OCR/GPS fix
+    this.distanceSinceLastFix = 0;   // meters since last position fix
     this.totalDistance = 0;           // total meters walked
-    this.stepLength = 0.75;          // average step length in meters
     this.isActive = false;
     this._handler = null;
     this._onStep = null;
+
+    // Step length — load from localStorage or use default
+    this.stepLength = this._loadStepLength();
+
+    // Calibration state
+    this.isCalibrating = false;
+    this._calibrationSteps = 0;
+    this._calibrationCallback = null;
 
     // Peak detection state
     this._magnitudeBuffer = [];
@@ -25,6 +36,86 @@ class StepCounter {
     this._valleyThreshold = 9.0;     // m/s² — must drop below this between peaks
     this._lastWasAbove = false;
     this._lastMagnitude = 0;
+  }
+
+  _loadStepLength() {
+    try {
+      const saved = localStorage.getItem("indoor-nav-step-length");
+      if (saved) {
+        const val = parseFloat(saved);
+        if (val > 0.3 && val < 1.5) return val; // sanity check
+      }
+    } catch (e) { /* localStorage not available */ }
+    return 0.75; // default average step length
+  }
+
+  _saveStepLength() {
+    try {
+      localStorage.setItem("indoor-nav-step-length", String(this.stepLength));
+    } catch (e) { /* localStorage not available */ }
+  }
+
+  // Get the current step length (for display)
+  getStepLength() {
+    return this.stepLength;
+  }
+
+  // Manually set step length
+  setStepLength(meters) {
+    if (meters > 0.3 && meters < 1.5) {
+      this.stepLength = meters;
+      this._saveStepLength();
+      return true;
+    }
+    return false;
+  }
+
+  // Start calibration mode
+  // User walks a known distance, then calls finishCalibration(distanceMeters)
+  startCalibration(onStep) {
+    this.isCalibrating = true;
+    this._calibrationSteps = 0;
+    this._calibrationCallback = onStep;
+
+    if (!this.isActive) {
+      this.start(() => {});
+    }
+  }
+
+  // Finish calibration — calculate step length from known distance
+  finishCalibration(actualDistanceMeters) {
+    if (!this.isCalibrating || this._calibrationSteps < 5) {
+      return { success: false, message: "Not enough steps detected. Walk at least 5 steps." };
+    }
+
+    const newStepLength = actualDistanceMeters / this._calibrationSteps;
+
+    // Sanity check
+    if (newStepLength < 0.3 || newStepLength > 1.5) {
+      return {
+        success: false,
+        message: `Calculated step length (${newStepLength.toFixed(2)}m) seems wrong. Try again.`,
+      };
+    }
+
+    this.stepLength = Math.round(newStepLength * 100) / 100; // round to 2 decimal places
+    this._saveStepLength();
+    this.isCalibrating = false;
+    this._calibrationSteps = 0;
+    this._calibrationCallback = null;
+
+    return {
+      success: true,
+      stepLength: this.stepLength,
+      steps: this._calibrationSteps,
+      message: `Step length set to ${this.stepLength}m`,
+    };
+  }
+
+  cancelCalibration() {
+    this.isCalibrating = false;
+    this._calibrationSteps = 0;
+    this._calibrationCallback = null;
   }
 
   // Start counting steps
@@ -66,6 +157,7 @@ class StepCounter {
     }
     this.isActive = false;
     this._onStep = null;
+    this.cancelCalibration();
   }
 
   // Reset distance counter (called when a new position fix is obtained)
@@ -110,6 +202,14 @@ class StepCounter {
       this.steps++;
       this.distanceSinceLastFix += this.stepLength;
       this.totalDistance += this.stepLength;
+
+      // Calibration mode
+      if (this.isCalibrating) {
+        this._calibrationSteps++;
+        if (this._calibrationCallback) {
+          this._calibrationCallback({ calibrationSteps: this._calibrationSteps });
+        }
+      }
 
       if (this._onStep) {
         this._onStep({

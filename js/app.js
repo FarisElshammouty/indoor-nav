@@ -1,5 +1,5 @@
 // ============================================================
-// MAIN APP CONTROLLER — GPS + Visual Localization + Step Counting
+// MAIN APP CONTROLLER — GPS + Visual Localization + Barometer + Steps
 // ============================================================
 
 class IndoorNavApp {
@@ -19,21 +19,134 @@ class IndoorNavApp {
   }
 
   async _init() {
+    this._loadSettings();
     this._bindEvents();
     this._populateAutocomplete();
     this._populateBuildingsGrid();
-
-    // Check server status on load
+    this._initSettingsUI();
     this._checkServerStatus();
   }
 
-  async _checkServerStatus() {
-    const status = await this.locationManager.localizer.checkServer();
-    const statusEl = document.getElementById("map-status");
-    if (status) {
-      statusEl.innerHTML = `<span class="status-good">Server connected — ${status.modelsLoaded} models loaded</span>`;
+  // ---- SETTINGS ----
+
+  _loadSettings() {
+    try {
+      const saved = localStorage.getItem("indoor-nav-server-url");
+      if (saved) {
+        this.locationManager.localizer.serverUrl = saved;
+      }
+    } catch (e) { /* localStorage not available */ }
+  }
+
+  _saveServerUrl(url) {
+    try {
+      localStorage.setItem("indoor-nav-server-url", url);
+    } catch (e) { /* localStorage not available */ }
+    this.locationManager.localizer.serverUrl = url;
+  }
+
+  _initSettingsUI() {
+    // Server URL
+    const urlInput = document.getElementById("server-url-input");
+    const urlSave = document.getElementById("server-url-save");
+    if (urlInput) {
+      urlInput.value = this.locationManager.localizer.serverUrl;
+    }
+    if (urlSave) {
+      urlSave.addEventListener("click", () => this._handleSaveServerUrl());
+    }
+
+    // Step calibration
+    const calibBtn = document.getElementById("calibrate-btn");
+    if (calibBtn) {
+      calibBtn.addEventListener("click", () => this._handleCalibration());
+    }
+    this._updateStepLengthDisplay();
+
+    // Settings toggle
+    const settingsToggle = document.getElementById("settings-toggle");
+    const settingsPanel = document.getElementById("settings-panel");
+    if (settingsToggle && settingsPanel) {
+      settingsToggle.addEventListener("click", () => {
+        settingsPanel.classList.toggle("hidden");
+        settingsToggle.classList.toggle("open");
+      });
+    }
+  }
+
+  _handleSaveServerUrl() {
+    const urlInput = document.getElementById("server-url-input");
+    const url = urlInput.value.trim().replace(/\/+$/, ""); // remove trailing slashes
+    if (!url) return;
+
+    this._saveServerUrl(url);
+    this._checkServerStatus();
+
+    const feedback = document.getElementById("server-url-feedback");
+    if (feedback) {
+      feedback.textContent = "Checking...";
+      feedback.className = "settings-feedback";
+    }
+  }
+
+  _handleCalibration() {
+    const calibBtn = document.getElementById("calibrate-btn");
+    const calibStatus = document.getElementById("calibrate-status");
+    const sc = this.locationManager.stepCounter;
+
+    if (sc.isCalibrating) {
+      // Finish calibration — user walked 10 meters
+      const result = sc.finishCalibration(10);
+      calibBtn.textContent = "Calibrate";
+      if (result.success) {
+        calibStatus.textContent = `Step length: ${result.stepLength}m`;
+        calibStatus.className = "settings-feedback good";
+      } else {
+        calibStatus.textContent = result.message;
+        calibStatus.className = "settings-feedback warn";
+      }
+      this._updateStepLengthDisplay();
     } else {
-      statusEl.innerHTML = `<span class="status-warn">Localization server offline — GPS-only mode</span>`;
+      // Start calibration
+      sc.startCalibration((data) => {
+        calibStatus.textContent = `Steps: ${data.calibrationSteps} — keep walking...`;
+      });
+      calibBtn.textContent = "Done (walked 10m)";
+      calibStatus.textContent = "Walk exactly 10 meters, then press Done";
+      calibStatus.className = "settings-feedback";
+    }
+  }
+
+  _updateStepLengthDisplay() {
+    const el = document.getElementById("current-step-length");
+    if (el) {
+      el.textContent = `${this.locationManager.stepCounter.getStepLength()}m`;
+    }
+  }
+
+  async _checkServerStatus() {
+    const statusEl = document.getElementById("map-status");
+    const feedback = document.getElementById("server-url-feedback");
+
+    statusEl.innerHTML = `<span class="status-warn">Checking server...</span>`;
+
+    const status = await this.locationManager.localizer.checkServer();
+
+    if (status) {
+      const modelCount = status.modelsLoaded || 0;
+      const baroText = Barometer.isAvailable() ? " | Floor detection ON" : "";
+      statusEl.innerHTML = `<span class="status-good">Server connected — ${modelCount} model${modelCount !== 1 ? "s" : ""} loaded${baroText}</span>`;
+      if (feedback) {
+        feedback.textContent = "Connected";
+        feedback.className = "settings-feedback good";
+      }
+    } else {
+      const baroText = Barometer.isAvailable() ? " | Floor detection available" : "";
+      statusEl.innerHTML = `<span class="status-warn">Server offline — GPS-only mode${baroText}</span>`;
+      if (feedback) {
+        feedback.textContent = "Could not connect";
+        feedback.className = "settings-feedback warn";
+      }
     }
   }
 
@@ -62,7 +175,7 @@ class IndoorNavApp {
     });
 
     document.addEventListener("click", (e) => {
-      if (!e.target.closest(".search-box")) {
+      if (!e.target.closest(".search-box") && !e.target.closest(".settings-panel")) {
         document.getElementById("autocomplete-list").classList.add("hidden");
       }
     });
@@ -145,8 +258,6 @@ class IndoorNavApp {
     }
 
     this.destination = result;
-
-    // Go straight to navigation — no intermediate screens
     this.startNavigation();
   }
 
@@ -175,7 +286,8 @@ class IndoorNavApp {
     document.getElementById("distance-display").textContent = "";
 
     // Start camera
-    await this._startCamera();
+    const cameraOk = await this._startCamera();
+    if (!cameraOk) return; // Error shown in _startCamera
 
     // Tell location manager which building we're headed to
     this.locationManager.setTargetBuilding(this.destination.buildingCode);
@@ -187,9 +299,13 @@ class IndoorNavApp {
     );
 
     // Start compass for arrow direction
-    await this.compass.start((heading) => {
+    const compassOk = await this.compass.start((heading) => {
       this._updateArrowRotation(heading);
     });
+
+    if (!compassOk) {
+      this._showLocStatus("Compass not available — directions may be limited");
+    }
 
     // Start visual localization with the camera feed
     const video = document.getElementById("ar-camera-feed");
@@ -222,6 +338,10 @@ class IndoorNavApp {
         this._handleVisualPosition(update);
         break;
 
+      case "floor_change":
+        this._handleFloorChange(update);
+        break;
+
       case "step":
         this._handleStepUpdate(update);
         break;
@@ -239,10 +359,12 @@ class IndoorNavApp {
 
     // Update confidence badge
     this._updateConfidenceBadge(update.confidence);
+
+    // Update floor indicator on AR screen
+    this._updateFloorIndicator(update);
   }
 
   _handleOutdoorUpdate(update) {
-    // Show outdoor navigation info
     document.getElementById("outdoor-info").classList.remove("hidden");
     document.getElementById("loc-status").classList.add("hidden");
 
@@ -254,7 +376,6 @@ class IndoorNavApp {
     document.getElementById("distance-display").textContent = `${update.distance}m`;
     document.getElementById("current-location").textContent = "Outdoors";
 
-    // Arrow points toward the building using GPS bearing
     if (update.bearing !== null && this.compass.heading !== null) {
       const rotation = Compass.getArrowRotation(update.bearing, this.compass.heading);
       const arrowEl = document.getElementById("ar-arrow");
@@ -278,16 +399,13 @@ class IndoorNavApp {
   }
 
   _handleVisualRoom(update) {
-    // Room detected! Calculate path and start turn-by-turn
     document.getElementById("outdoor-info").classList.add("hidden");
     document.getElementById("loc-status").classList.remove("hidden");
     this._showLocStatus(`Located: ${update.code}`);
 
-    // Find path from detected room's waypoint to destination
     const startWaypointId = update.waypointId;
     const endWaypointId = this.destination.room.waypointId;
 
-    // If we detected the destination room itself
     if (update.code === this.destination.room.code) {
       this._showArrived();
       return;
@@ -297,14 +415,13 @@ class IndoorNavApp {
 
     if (!path) {
       document.getElementById("instruction-text").textContent =
-        "Looking for a route...";
+        "No route found — try moving to a different area";
       return;
     }
 
     this.steps = this.pathfinder.getDirections(path, this.destination.room);
     this.currentStep = 0;
 
-    // Update current location display
     const building = BUILDINGS[update.building];
     const floor = building.floors[update.floor];
     document.getElementById("current-location").textContent =
@@ -314,7 +431,6 @@ class IndoorNavApp {
   }
 
   _handleVisualPosition(update) {
-    // We know building/floor/approximate position but no specific room
     document.getElementById("outdoor-info").classList.add("hidden");
     document.getElementById("loc-status").classList.remove("hidden");
 
@@ -326,7 +442,6 @@ class IndoorNavApp {
         `${building.name} — ${floor.name}`;
     }
 
-    // Try to find path from nearest waypoint
     if (update.nearestWaypoint) {
       const path = this.pathfinder.findPath(
         update.nearestWaypoint,
@@ -344,13 +459,44 @@ class IndoorNavApp {
     this._showLocStatus("Position detected — refining...");
   }
 
+  _handleFloorChange(update) {
+    // Barometer detected a floor change
+    if (this.locationManager.currentBuilding) {
+      const building = this.locationManager.currentBuilding.building;
+      document.getElementById("current-location").textContent =
+        `${building.name} — ${update.floorName}`;
+    }
+
+    // Recalculate path from current position on new floor
+    if (this.steps.length > 0 && this.currentStep < this.steps.length) {
+      // Find nearest stairwell waypoint on the new floor
+      const buildingCode = this.locationManager.currentBuilding?.code;
+      if (buildingCode) {
+        const building = BUILDINGS[buildingCode];
+        const floor = building?.floors[update.newFloor];
+        if (floor) {
+          // Find stairwell waypoint on this floor
+          const stairWP = floor.waypoints.find((wp) => wp.isStairs);
+          if (stairWP) {
+            const path = this.pathfinder.findPath(stairWP.id, this.destination.room.waypointId);
+            if (path) {
+              this.steps = this.pathfinder.getDirections(path, this.destination.room);
+              this.currentStep = 0;
+              this._renderStep();
+            }
+          }
+        }
+      }
+    }
+
+    this._showLocStatus(`Floor ${update.newFloor} detected`);
+  }
+
   _handleStepUpdate(update) {
-    // Auto-advance if user has walked past a waypoint's expected distance
     if (this.steps.length > 0 && this.currentStep < this.steps.length - 1) {
       const currentStepData = this.steps[this.currentStep];
       if (currentStepData.distance > 0 &&
           update.distanceSinceLastFix >= currentStepData.distance * 0.8) {
-        // User has walked approximately the right distance — advance
         this.currentStep++;
         this.locationManager.stepCounter.resetDistance();
         this._renderStep();
@@ -360,7 +506,6 @@ class IndoorNavApp {
   }
 
   _onModeChange(newMode, oldMode) {
-    // Update mode badge
     const badge = document.getElementById("mode-badge");
     const label = document.getElementById("mode-label");
     const icon = document.getElementById("mode-icon");
@@ -386,10 +531,30 @@ class IndoorNavApp {
     }
   }
 
+  _updateFloorIndicator(update) {
+    const el = document.getElementById("floor-indicator");
+    if (!el) return;
+
+    if (update.currentFloor && update.currentBuilding) {
+      const floor = update.currentBuilding.building.floors[update.currentFloor];
+      if (floor) {
+        el.textContent = floor.name;
+        el.classList.remove("hidden");
+        return;
+      }
+    }
+
+    // Check barometer
+    if (this.locationManager.barometer.isSupported && this.locationManager.barometer.baselinePressure !== null) {
+      const baro = this.locationManager.barometer.getFloor();
+      el.textContent = `Floor ${baro.floorKey}`;
+      el.classList.remove("hidden");
+    }
+  }
+
   // ---- AR RENDERING ----
 
   _updateArrowRotation(heading) {
-    // If we have navigation steps, use step bearing
     const step = this.steps[this.currentStep];
     if (step && step.targetBearing !== null && step.targetBearing !== undefined) {
       const rotation = Compass.getArrowRotation(step.targetBearing, heading);
@@ -398,34 +563,26 @@ class IndoorNavApp {
         arrowEl.style.transform = `rotate(${rotation}deg)`;
       }
     }
-    // If outdoor, location update handler handles the arrow
   }
 
   _renderStep() {
     const step = this.steps[this.currentStep];
     if (!step) return;
 
-    // Instruction text
     document.getElementById("instruction-text").textContent = step.instruction;
-
-    // Distance
     document.getElementById("distance-display").textContent =
       step.distance > 0 ? `~${Math.round(step.distance)}m` : "";
 
-    // Arrow
     this._renderArrow(step.icon);
 
-    // Destination label
     document.getElementById("ar-dest-label").textContent =
       `${this.destination.room.code} — ${this.destination.room.name}`;
     document.getElementById("current-location").textContent =
       `${step.building} — ${step.floor}`;
 
-    // Progress bar
     const progress = ((this.currentStep + 1) / this.steps.length) * 100;
     document.getElementById("progress-fill").style.width = `${progress}%`;
 
-    // Arrived state
     if (step.isLast) {
       this._showArrived();
     } else {
@@ -458,7 +615,6 @@ class IndoorNavApp {
       return;
     }
 
-    // Navigation arrow that rotates via compass
     const navArrow = `<svg viewBox="0 0 100 120" class="arrow-svg"><path d="M50 10 L80 50 L62 50 L62 110 L38 110 L38 50 L20 50 Z" fill="white"/></svg>`;
     arrowEl.className = "ar-arrow-compact compass-arrow";
     arrowEl.innerHTML = navArrow;
@@ -477,13 +633,11 @@ class IndoorNavApp {
     document.getElementById("distance-display").textContent = "";
     document.getElementById("progress-fill").style.width = "100%";
 
-    // Show arrive icon
     const arrowEl = document.getElementById("ar-arrow");
     arrowEl.className = "ar-arrow-compact animate-arrive";
     arrowEl.innerHTML = `<svg viewBox="0 0 100 100" class="arrow-svg"><circle cx="50" cy="50" r="38" fill="none" stroke="#22c55e" stroke-width="5"/><path d="M30 50 L44 64 L70 38" fill="none" stroke="#22c55e" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
     arrowEl.style.transform = "";
 
-    // Auto-exit after 8 seconds
     setTimeout(() => {
       if (this.isNavigating) {
         this.exitNavigation();
@@ -545,10 +699,35 @@ class IndoorNavApp {
       });
       video.srcObject = this.arStream;
       await video.play();
+      return true;
     } catch (err) {
       console.warn("Camera not available:", err);
-      document.getElementById("instruction-text").textContent =
-        "Camera access needed — please allow camera permission";
+
+      let msg = "Camera access needed";
+      if (err.name === "NotAllowedError") {
+        msg = "Camera permission denied — tap the lock icon in your browser to enable it";
+      } else if (err.name === "NotFoundError") {
+        msg = "No camera found on this device";
+      } else if (err.name === "NotReadableError") {
+        msg = "Camera is in use by another app";
+      } else if (err.name === "OverconstrainedError") {
+        msg = "Camera settings not supported — trying fallback...";
+        // Retry without facing mode constraint
+        try {
+          this.arStream = await navigator.mediaDevices.getUserMedia({
+            video: { width: { ideal: 640 }, height: { ideal: 480 } },
+          });
+          const video = document.getElementById("ar-camera-feed");
+          video.srcObject = this.arStream;
+          await video.play();
+          return true;
+        } catch (e2) {
+          msg = "Could not access any camera";
+        }
+      }
+
+      document.getElementById("instruction-text").textContent = msg;
+      return false;
     }
   }
 
